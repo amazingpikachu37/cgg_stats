@@ -1,0 +1,8 @@
+//This file is parsed line by line to gather information about the count/update files without having to check the files.
+//Each thread has four lines.
+//The format for this is as follows:
+//    live_thread total_updates total_counts_time_sort last_count_time_id_for_num_sort last_count (can't be empty. 0 represents nonexistence)
+//    [msgs_per_update_file] (can be empty)
+//    [msgs_per_count_time_file] (can be empty)
+//    [first and last uuid of each update file] (must be exactly two per file. Zero length files are not permitted)
+//    [first and last uuid of each count_time file] (must be exactly two per file. Zero length files are not permitted)
