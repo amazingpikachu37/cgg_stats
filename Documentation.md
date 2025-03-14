@@ -10,7 +10,7 @@ Flag|Explanation
 `-context`,`-c`|The visible range around the focused user or position in the display of the stat (defaults to 2)
 `-start_uuid`,'`su`|The start UUID for which to generate the stat (defaults to 00000000-0000-4000-a000-000000000000)
 `-end_uuid`,`-eu`|The end UUID for which to generate the stat (defaults to 99999999-9999-4999-a999-999999999999)
-`-start_date`,'-sd`|The start date for which to generate the stat (defaults to 2023-2-22)
+`-start_date`,'-sd'|The start date for which to generate the stat (defaults to 2023-2-22)
 `-end_date`,`-ed`|The end date for which to generate the stat (defaults to current day + 1)
 `-start_k`,`-sk`|The start k for which to generate the stat (defaults to 0)
 `-end_k`,`-ek`|The end k for which to generate the stat (defaults to 2147483647)
