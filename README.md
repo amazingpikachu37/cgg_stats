@@ -1,6 +1,8 @@
 # cgg_stats
 A tool to generate a wide array of statistics for users of counting.gg.
 
+This is meant to be used via a text-based interface [here](https://counting.gg/thread/test), with the documentation for commands found in Documentation.md.
+
 # Necessary Libraries  
 Jackson version 2.14 https://github.com/FasterXML/jackson (For parsing JSON data)   
 Apache Fury version 5.1 https://mvnrepository.com/artifact/org.apache.fury/fury-core (For serialization)  
