@@ -11,7 +11,7 @@ import java.util.Scanner;
 public class FileParser {
     private static final HashMap<String, FileData> file_data = new HashMap<>();
     static {
-        File f = new File("SidethreadData//FileData");
+        File f = new File("SidethreadData/FileData");
         try {
             Scanner in = new Scanner(f);
             while (in.hasNextLine()) {
@@ -48,7 +48,7 @@ public class FileParser {
             }
             in.close();
         } catch (FileNotFoundException e) {
-            System.out.println("SidethreadData//FileData is missing");
+            System.out.println("SidethreadData/FileData is missing");
             e.printStackTrace();
             throw new RuntimeException();
         }
@@ -68,7 +68,7 @@ public class FileParser {
                 //    [first and last uuid of each update file] (must be exactly two per file. Zero length files are not permitted)
                 //    [first and last uuid of each count_time file] (must be exactly two per file. Zero length files are not permitted)""";
         file_data.put(live_thread, update);
-        File f = new File("SidethreadData//FileData");
+        File f = new File("SidethreadData/FileData");
         try {
             PrintWriter fout = new PrintWriter(f);
             fout.println(comment);

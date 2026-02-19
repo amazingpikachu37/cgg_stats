@@ -42,13 +42,13 @@ public abstract class CountingThread {
         for(int i=0;i<live_threads.size();i++) {
             this.name.add(name+"_v"+i);
             this.live_thread.add(live_threads.get(i));
-            String file_dir = "SidethreadData\\" + live_threads.get(i);
-            this.update_files.add(file_dir + "\\updates\\chat");
-            this.count_time_files.add(file_dir + "\\count_time\\chat");
-            this.count_num_files.add(file_dir + "\\count_num\\chat");
+            String file_dir = "SidethreadData/" + live_threads.get(i);
+            this.update_files.add(file_dir + "/updates/chat");
+            this.count_time_files.add(file_dir + "/count_time/chat");
+            this.count_num_files.add(file_dir + "/count_num/chat");
             Util.createFileStructure(live_threads.get(i));
-            this.EX_COUNTS_LOGGER.add(Util.setupLogger(Logger.getLogger("EX_COUNTS_LOGGER_"+name+"_"+i), file_dir + "\\extra_counts.log", name));
-            this.SET_COUNTS_LOGGER.add(Util.setupLogger(Logger.getLogger("SET_COUNTS_LOGGER_"+name+"_"+i), file_dir + "\\set_counts.log", name));
+            this.EX_COUNTS_LOGGER.add(Util.setupLogger(Logger.getLogger("EX_COUNTS_LOGGER_"+name+"_"+i), file_dir + "/extra_counts.log", name));
+            this.SET_COUNTS_LOGGER.add(Util.setupLogger(Logger.getLogger("SET_COUNTS_LOGGER_"+name+"_"+i), file_dir + "/set_counts.log", name));
             FileData data = FileParser.getFileData(live_threads.get(i));
             if (data == null) {
                 data = new FileData(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(Arrays.asList(0, 0, 0, 0)), new ArrayList<>(), new ArrayList<>());
@@ -627,7 +627,7 @@ public abstract class CountingThread {
             this.threadToCount(i);
             this.timeToNum(i);
             if(initial_updates!=this.total_updates.get(i)) {
-                File[] files = new File("SidethreadData\\" + live_thread.get(i) + "\\stats_data").listFiles();
+                File[] files = new File("SidethreadData/" + live_thread.get(i) + "/stats_data").listFiles();
                 if (files != null) {
                     for (File f : files) {
                         f.delete();
@@ -669,13 +669,14 @@ public abstract class CountingThread {
         long least_id = Long.MAX_VALUE;
         while(true) {
             URL u = new URI("https", "api.counting.gg", "/api/thread/loadOlderCounts", query.toString(), null).toURL();
+            System.out.println(u);
             HttpURLConnection connection = (HttpURLConnection) u.openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("User-Agent", "{:}");
             int status = connection.getResponseCode();
             if(status > 299) {
-                System.out.println("Connection failed. Retrying");
-                java.lang.Thread.sleep(55000);
+                System.out.println("Connection failed with status "+status+". Retrying");
+                java.lang.Thread.sleep(65000);
                 continue;
             }
             String text = new BufferedReader(

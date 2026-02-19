@@ -1,9 +1,12 @@
 package Threads;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+@JsonIgnoreProperties(value = { "hasThreeCharComment" })
 public class UpdateValue implements Comparable<UpdateValue> {
     private long id;
     private UUID uuid;

@@ -69,7 +69,7 @@ public class Counters {
         }
     }
     private static void readMoneyFile() {
-        File f = new File("SidethreadData//MoneyData");
+        File f = new File("SidethreadData/MoneyData");
         try(Scanner in = new Scanner(f)) {
             while(in.hasNextLine()) {
                 String[] map = in.nextLine().split(" ");
@@ -80,7 +80,7 @@ public class Counters {
         }
     }
     private static void updateMoneyFile() {
-        File f = new File("SidethreadData//MoneyData");
+        File f = new File("SidethreadData/MoneyData");
         try(PrintWriter out = new PrintWriter(f)) {
             for(Map.Entry<String, Long> entry: money.entrySet()) {
                 out.println(entry.getKey()+" "+entry.getValue());

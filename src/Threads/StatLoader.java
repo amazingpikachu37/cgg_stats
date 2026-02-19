@@ -61,7 +61,7 @@ public class StatLoader {
         this.thread = thread;
     }
     public <T> void saveStatToBytes(T stat_data, String filename) {
-        File f = new File(file_dir +"\\stats_data\\"+filename);
+        File f = new File(file_dir +"/stats_data/"+filename);
         try(FileOutputStream stream = new FileOutputStream(f)) {
             ByteBuffer data = ByteBuffer.allocate(12);
             data.putInt(thread.getTotal_updates());
@@ -75,7 +75,7 @@ public class StatLoader {
     }
     @SuppressWarnings("unchecked")
     public <T> T loadStatFromBytes(String filename) {
-        File f = new File(file_dir +"\\stats_data\\"+filename);
+        File f = new File(file_dir +"/stats_data/"+filename);
         try {
             byte[] byte_data = Files.readAllBytes(f.toPath());
             ByteBuffer wrapper = ByteBuffer.wrap(byte_data);
@@ -648,6 +648,18 @@ public class StatLoader {
             int compare = Long.signum(o.time-this.time);
             if(compare != 0) return compare;
             return o.end_count-this.end_count;
+        }
+    }
+    public record CountStreakOutput(int start, int end, int size) implements Comparable<CountStreakOutput> {
+        @Override
+        public int compareTo(CountStreakOutput o) {
+            int compare = this.size-o.size;
+            if(compare!=0) return compare;
+            return o.start-this.start;
+        }
+        @Nonnull
+        public String toString() {
+            return size+"|"+start+"|"+end;
         }
     }
     public record CountStreakOutputWithThread(int start, int end, int size, String thread) implements Comparable<CountStreakOutputWithThread> {

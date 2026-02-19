@@ -1,5 +1,15 @@
 package Threads;
 
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartUtils;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
+import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
+
+import java.awt.*;
+import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.time.Instant;
@@ -8,6 +18,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -58,6 +69,11 @@ public class CombinedStats {
         traditional_map.put("wait_2", new Wait2());
         traditional_map.put("base_64", new Base64());
         traditional_map.put("coordinates", new Coordinates());
+        traditional_map.put("2048", new _2048());
+        traditional_map.put("repeating_digits", new RepeatingDigits());
+        traditional_map.put("mostly_repeating_digits", new MostlyRepeatingDigits());
+        traditional_map.put("rationals", new Rationals());
+        traditional_map.put("ordinals", new Ordinals());
         double_counting_map.put("odds_double", new OddsDouble());
         double_counting_map.put("evens_double", new EvensDouble());
         double_counting_map.put("letters_double", new LettersDouble());
@@ -85,6 +101,11 @@ public class CombinedStats {
         double_counting_map.put("military_time_double", new MilitaryTimeDouble());
         double_counting_map.put("base_64_double", new Base64Double());
         double_counting_map.put("coordinates_double", new CoordinatesDouble());
+        double_counting_map.put("2048_double", new _2048Double());
+        double_counting_map.put("repeating_digits_double", new RepeatingDigitsDouble());
+        double_counting_map.put("mostly_repeating_digits_double", new MostlyRepeatingDigitsDouble());
+        double_counting_map.put("rationals_double", new RationalsDouble());
+        double_counting_map.put("ordinals_double", new OrdinalsDouble());
         no_mistakes_map.put("no_mistakes_double", new NoMistakesDouble());
         no_mistakes_map.put("no_mistakes_or_ban", new NoMistakesOrBan());
         no_mistakes_map.put("no_mistakes_or_ban_double", new NoMistakesOrBanDouble());
@@ -1741,6 +1762,105 @@ public class CombinedStats {
         }
         return new StatLoader.SitewideFastestNCountsNoUserOutput((int)current_fastest[1], record_thread_str[0], (int)current_fastest[2], record_thread_str[1], current_fastest[0]);
     }
+    public static void graph_thread_fastest_n_count_pace_no_user(List<Statable> threads, int n, UUID uuid1, UUID uuid2, boolean fast) {
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        for(Statable thread:threads) {
+            XYSeries series = new XYSeries(thread.getName());
+            List<StatLoader.SitewideFastestNCountsNoUserOutput> data = fastest_up_to_n_counts_no_user(new CountTimeIterator(thread, uuid1, uuid2),n,fast);
+            for(int i=0;i<data.size();i++) {
+                series.add(i+1, n*data.get(i).time()/((float)10000000*(i+1)));
+            }
+            dataset.addSeries(series);
+        }
+        JFreeChart chart = ChartFactory.createXYLineChart("Fastest "+n+" Count Pace",
+                "# of Counts", "Seconds", dataset);
+        customizeChart(chart);
+        File imageFile = new File("XYLineChart.png");
+        int width = 1920;
+        int height = 1080;
+
+        try {
+            ChartUtils.saveChartAsPNG(imageFile, chart, width, height);
+        } catch (IOException ex) {
+            System.err.println(ex);
+        }
+    }
+    private static void customizeChart(JFreeChart chart) {   // here we make some customization
+        XYPlot plot = chart.getXYPlot();
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer();
+//        LogAxis y_axis = new LogAxis("Seconds");
+//        y_axis.setSmallestValue(1);
+//        y_axis.setAutoRange(true);
+//        plot.setRangeAxis(y_axis);
+        renderer.setDefaultStroke(new BasicStroke(1.0f));
+        renderer.setDefaultShapesVisible(false);
+
+//        // sets paint color for each series
+//        renderer.setSeriesPaint(0, Color.RED);
+//        renderer.setSeriesPaint(1, Color.GREEN);
+//        renderer.setSeriesPaint(2, Color.YELLOW);
+//
+//        // sets thickness for series (using strokes)
+//        renderer.setSeriesStroke(0, new BasicStroke(4.0f));
+//        renderer.setSeriesStroke(1, new BasicStroke(3.0f));
+//        renderer.setSeriesStroke(2, new BasicStroke(2.0f));
+
+        // sets paint color for plot outlines
+        plot.setOutlinePaint(Color.BLUE);
+        plot.setOutlineStroke(new BasicStroke(2.0f));
+
+        // sets renderer for lines
+        plot.setRenderer(renderer);
+
+        // sets plot background
+        plot.setBackgroundPaint(Color.DARK_GRAY);
+
+        // sets paint color for the grid lines
+        plot.setRangeGridlinesVisible(true);
+        plot.setRangeGridlinePaint(Color.BLACK);
+
+        plot.setDomainGridlinesVisible(true);
+        plot.setDomainGridlinePaint(Color.BLACK);
+
+    }
+    private static List<StatLoader.SitewideFastestNCountsNoUserOutput> fastest_up_to_n_counts_no_user(CountIterator counts, int n, boolean fast) {
+        //timestamp, number
+        long[][] current = new long[n][2];
+        String[] thread_str = new String[n];
+        //time, start count, end count
+        long[][] current_fastest = new long[n][4];
+        for(int i=0;i<n;i++) current_fastest[i][0] = fast?Long.MAX_VALUE:0;
+        String[] record_thread_str = new String[2];
+        int index = 0;
+        counts.init();
+        while(counts.hasNext()) {
+            CountValue count = counts.next();
+            long timestamp = count.getUUID().getTime();
+            long number = count.getValidCountNumber();
+            for(int i=0;i<n;i++) {
+                if (current[(index+i)%n][0] != 0) {
+                    long speed = timestamp - current[(index+i)%n][0];
+                    long record_speed = current_fastest[n-i-1][0];
+                    if ((speed < record_speed && fast) || (speed > record_speed && !fast)) {
+                        current_fastest[n-i-1][0] = speed;
+                        current_fastest[n-i-1][1] = current[index][1];
+                        current_fastest[n-i-1][2] = number;
+                        record_thread_str[0] = thread_str[index];
+                        record_thread_str[1] = counts.getThread().getName();
+                    }
+                }
+            }
+            current[index][0] = timestamp;
+            current[index][1] = number;
+            thread_str[index] = counts.getThread().getName();
+            index = (index+1)%n;
+        }
+        List<StatLoader.SitewideFastestNCountsNoUserOutput> output = new ArrayList<>();
+        for(int i=0;i<n;i++) {
+            output.add(new StatLoader.SitewideFastestNCountsNoUserOutput((int)current_fastest[i][1], record_thread_str[0], (int)current_fastest[i][2], record_thread_str[1], current_fastest[i][0]));
+        }
+        return output;
+    }
 
     public static Map<String, StatLoader.SitewideFastestNCountsOutput> sitewide_fastest_n_counts(List<Statable> threads, int n, UUID uuid1, UUID uuid2, boolean fast) {
         CombinedCountTimeIterator counts = new CombinedCountTimeIterator(threads, uuid1, uuid2);
@@ -1911,6 +2031,35 @@ public class CombinedStats {
                 if(streak[0] > prev_streak) {
                     no_mistakes.put(user, new StatLoader.CountStreakOutputWithThread(streak[1], streak[2], streak[0],thread.getName()));
                 }
+            }
+        }
+        return no_mistakes;
+    }
+    public static Map<String, StatLoader.CountStreakOutput> overall_thread_no_mistake_streak(List<Statable> threads, UUID uuid1, UUID uuid2) {
+        Map<String, StatLoader.CountStreakOutput> no_mistakes = new HashMap<>();
+        for(Statable thread:threads) {
+            int[] current_streak = new int[3]; //int[] contains size, start, and end
+            UpdateIterator counts = new UpdateIterator(thread, uuid1, uuid2).init();
+            while(counts.hasNext()) {
+                UpdateValue count = counts.next();
+                if(count.isStricken()) {
+                    int prev_streak = no_mistakes.getOrDefault(thread.getName(), new StatLoader.CountStreakOutput(0,0,0)).size();
+                    if(current_streak[0] > prev_streak) {
+                        no_mistakes.put(thread.getName(), new StatLoader.CountStreakOutput(current_streak[1], current_streak[2], current_streak[0]));
+                    }
+                    current_streak = new int[3];
+                }
+                else if(count.isIsValidCount()) {
+                    if(current_streak[1]==0) {
+                        current_streak[1] = count.getValidCountNumber();
+                    }
+                    current_streak[2] = count.getValidCountNumber();
+                    current_streak[0]++;
+                }
+            }
+            int prev_streak = no_mistakes.getOrDefault(thread.getName(), new StatLoader.CountStreakOutput(0,0,0)).size();
+            if(current_streak[0] > prev_streak) {
+                no_mistakes.put(thread.getName(), new StatLoader.CountStreakOutput(current_streak[1], current_streak[2], current_streak[0]));
             }
         }
         return no_mistakes;

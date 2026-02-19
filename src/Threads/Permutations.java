@@ -23,9 +23,9 @@ public class Permutations extends Statable {
         return result;
     }
     public String getCount(int num) {
-        if(num <= 0 || num > 409113) throw new IllegalArgumentException();
+        if(num <= 0) throw new IllegalArgumentException();
         num--;
-        ArrayList<Character> str = new ArrayList<>(Arrays.asList('1','2','3','4','5','6','7','8','9'));
+        ArrayList<Character> str = new ArrayList<>(Arrays.asList('1','2','3','4','5','6','7','8','9','A','B','C'));
         int i;
         for(i=0;i<=str.size();i++) {
             int size_i_permutations = this.factorial(i+1);

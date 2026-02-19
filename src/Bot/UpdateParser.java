@@ -1,7 +1,7 @@
 package Bot;
 
-import Threads.UUID;
 import Threads.*;
+import Threads.UUID;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -19,11 +19,11 @@ public class UpdateParser {
     private static final Map<String, String> aliases = new HashMap<>();
     private static final String[] admins = new String[]{"amazingpikachu_37"};
     private static final LinkedList<String> recent_uuids = new LinkedList<>();
-    private static final Logger botLogger = Util.setupLogger(Logger.getLogger("BOT"),  "SidethreadData\\bot_history.log", "bot");
+    private static final Logger botLogger = Util.setupLogger(Logger.getLogger("BOT"),  "SidethreadData/bot_history.log", "bot");
     private static final LinkedBlockingDeque<FuncWithArgs> queue = new LinkedBlockingDeque<>();
     private record FuncWithArgs(String func_name, String[] args, Flags flags, List<Statable> counting_threads) {}
     static {
-        File f = new File("SidethreadData//SidethreadAliases.txt");
+        File f = new File("SidethreadData/SidethreadAliases.txt");
         try(Scanner in = new Scanner(f)) {
             while(in.hasNextLine()) {
                 String[] map = in.nextLine().split(" ");
@@ -58,7 +58,7 @@ public class UpdateParser {
                 case "allthreads" -> CombinedStats.all_threads;
                 default -> new ArrayList<>();
             };
-            if(threads_to_add.size()==0) {
+            if(threads_to_add.isEmpty()) {
                 String thread_name = aliases.get(arg);
                 if(thread_name!=null) {
                     threads_to_add.add(all_threads.get(thread_name));
@@ -662,6 +662,11 @@ public class UpdateParser {
                             header = header + "No mistake streak for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
                             countData1 = CombinedStats.overall_no_mistake_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
                             table_headers = new String[]{"Username", "Streak", "Thread", "Start Count", "End Count"};
+                        }
+                        case "threadnomistakestreak" -> {
+                            header = header + "No mistake streak for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
+                            countData1 = CombinedStats.overall_thread_no_mistake_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
+                            table_headers = new String[]{"Thread", "Streak", "Start Count", "End Count"};
                         }
                         case "threadparts" -> {
                             header = header + "Unique threads  " + data.flags.username + " has participated in between " + data.flags.start_uuid + " and " + data.flags.end_uuid;

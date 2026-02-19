@@ -26,12 +26,12 @@ public class Util {
     }
     public static void createFileStructure(String threadID) {
         String[] subfiles = {"updates", "count_num", "count_time", "stats_data", "stats_output"};
-        String path = "SidethreadData\\" + threadID;
+        String path = "SidethreadData/" + threadID;
         if(new File(path).mkdir())
             System.out.println(path + " was created");
         for(String directory: subfiles) {
-            if(new File(path + "\\"+ directory).mkdir()) {
-                System.out.println(path + "\\"+ directory + " was created");
+            if(new File(path + "/"+ directory).mkdir()) {
+                System.out.println(path + "/"+ directory + " was created");
             }
         }
     }

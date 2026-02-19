@@ -8,12 +8,12 @@ public abstract class Statable extends CountingThread {
     protected final StatLoader loader;
     public Statable(String name, List<String> live_threads) {
         super(name, live_threads, "UTC");
-        this.file_dir = "SidethreadData\\" + live_threads.get(live_threads.size()-1);
+        this.file_dir = "SidethreadData/" + live_threads.get(live_threads.size()-1);
         this.loader = new StatLoader(this, file_dir);
     }
     public Statable(String name, List<String> live_threads, String timezone) {
         super(name, live_threads, timezone);
-        this.file_dir = "SidethreadData\\" + live_threads.get(live_threads.size()-1);
+        this.file_dir = "SidethreadData/" + live_threads.get(live_threads.size()-1);
         this.loader = new StatLoader(this, file_dir);
     }
     public List<CountValue> getSimpleGetsWithOffset(int diff, int offset) {
