@@ -9,7 +9,7 @@ Apache Fury version 5.1 https://mvnrepository.com/artifact/org.apache.fury/fury-
 Socket IO Client version 2.1 https://mvnrepository.com/artifact/io.socket/socket.io-client (For communicating with websockets on counting.gg. Only necessary if running the bot.)  
 
 # Counting Data
-All data from counting.gg is intentionally excluded. The function CombinedStats.updateAllDatabases() can be used to download all the data, or alternatively, CountingThread.updateDatabase() can be called on individual threads to download data for that thread. Note that the initial download may require several GB of memory and could take around a full day. However, when running stats, this program is much lighter on memory usage.
+All data from counting.gg is intentionally excluded. The function AllThreads.updateFullDB() can be used to download all the data. Note that the initial download may take several days.
 
 # Further Comments
 If running locally, all stats can be found in src/Stats/CombinedStats.java. They can then be called directly from src/Threads/Main.java. The file Documentation.md provides documentation on commands when running the bot from src/Bot/BotMain.java. Please contact @pull_fish on discord before running any bots on counting.gg.
