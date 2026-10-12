@@ -1,11 +1,13 @@
 package Threads;
 
-import java.text.DecimalFormat;
-import java.util.List;
+import Stats.CountingThread;
+import Stats.ThreadData;
 
-public class Ordinals extends Statable {
-    public Ordinals() {
-        super("ordinals", List.of("ordinals"), "America/Montreal");
+import java.text.DecimalFormat;
+
+public class Ordinals extends CountingThread {
+    public Ordinals(ThreadData t) {
+        super(t);
     }
     private final String[] tensNames = {
             "",
@@ -91,7 +93,6 @@ public class Ordinals extends Statable {
         if (number == 0) return soFar;
         return numNames[number] + " hundred" + soFar;
     }
-
     private String convertOrdLessThanOneThousand(int number) {
         String soFar;
         if(number % 100 == 0) {
@@ -114,7 +115,7 @@ public class Ordinals extends Statable {
         if (number == 0) return soFar;
         return numNames[number] + " hundred and" + soFar;
     }
-    private String convert(long number) {
+    private String convertOrd(long number) {
         if (number == 0) { return "zeroth"; }
         String snumber;
         String mask = "000000000000";
@@ -148,25 +149,8 @@ public class Ordinals extends Statable {
         }
         return result.replaceAll("^\\s+", "").replaceAll("\\b\\s{2,}\\b", " ").trim();
     }
-
-    @Override
-    public List<Integer> getGetValues() {
-        return this.constructSimpleGetListWithOffset(500,0);
-    }
-
     public String getCount(int num) {
         if(num <= 0) throw new IllegalArgumentException();
-        return this.convert(num);
-    }
-    public String getNextGet() {
-        return "The next get is `"+ getCount((this.getLast_number()/500+1)*500)+"`";
-    }
-    public String[] link() {
-        return new String[]{"https://counting.gg/thread/ordinals"};
-    }
-
-    @Override
-    public List<List<Integer>> getSplitValues() {
-        return this.constructSimpleSplitsListWithInitialOffset(50, 500, 0);
+        return this.convertOrd(num);
     }
 }

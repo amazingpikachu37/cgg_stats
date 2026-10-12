@@ -1,17 +1,12 @@
 package Threads;
 
-import java.util.List;
+import Stats.CountingThread;
+import Stats.ThreadData;
 
-public class Time extends Statable {
-    public Time() {
-        super("time", List.of("time"),"America/Montreal");
+public class Time extends CountingThread {
+    public Time(ThreadData t) {
+        super(t);
     }
-
-    @Override
-    public List<Integer> getGetValues() {
-        return this.constructSimpleGetListWithOffset(900, 0);
-    }
-
     public String getCount(int num) {
         if(num <= 0) throw new IllegalArgumentException();
         String TOD = "AM";
@@ -24,16 +19,5 @@ public class Time extends Statable {
         int minutes = num%3600/60;
         int seconds = num%60;
         return String.format("%01d:%02d:%02d %s",hours,minutes,seconds,TOD);
-    }
-    public String getNextGet() {
-        return "The next get is `"+ getCount((this.getLast_number()/900+1)*900)+"`";
-    }
-    public String[] link() {
-        return new String[]{"https://counting.gg/thread/time"};
-    }
-
-    @Override
-    public List<List<Integer>> getSplitValues() {
-        return this.constructSimpleSplitsListWithInitialOffset(60, 900, 0);
     }
 }

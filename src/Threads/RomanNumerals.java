@@ -1,17 +1,12 @@
 package Threads;
 
-import java.util.List;
+import Stats.CountingThread;
+import Stats.ThreadData;
 
-public class RomanNumerals extends Statable {
-    public RomanNumerals() {
-        super("roman", List.of("roman"),"America/Montreal");
+public class RomanNumerals extends CountingThread {
+    public RomanNumerals(ThreadData t) {
+        super(t);
     }
-
-    @Override
-    public List<Integer> getGetValues() {
-        return this.constructSimpleGetListWithOffset(1000, 0);
-    }
-
     public String getCount(int num) {
         if(num <= 0 || num >= 4000000) throw new IllegalArgumentException();
         StringBuilder count = new StringBuilder();
@@ -24,16 +19,5 @@ public class RomanNumerals extends Statable {
             }
         }
         return count.toString();
-    }
-    public String getNextGet() {
-        return "The next get is `"+ getCount((this.getLast_number()/1000+1)*1000)+"`";
-    }
-    public String[] link() {
-        return new String[]{"https://counting.gg/thread/roman"};
-    }
-
-    @Override
-    public List<List<Integer>> getSplitValues() {
-        return this.constructSimpleSplitsListWithInitialOffset(100, 1000, 0);
     }
 }

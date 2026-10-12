@@ -1,7 +1,7 @@
 package Bot;
 
-import Threads.*;
-import Threads.UUID;
+import Stats.*;
+import Stats.UUID;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -12,17 +12,21 @@ import java.util.*;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class UpdateParser {
     private static boolean running = false;
-    private static final Map<String, Statable> all_threads = CombinedStats.all_threads_map;
+    private static final Map<String, CountingThread> all_threads = AllThreads.all_threads.stream().collect(Collectors.toMap(c -> c.thread.name, c -> c));
     private static final Map<String, String> aliases = new HashMap<>();
     private static final String[] admins = new String[]{"amazingpikachu_37"};
     private static final LinkedList<String> recent_uuids = new LinkedList<>();
     private static final Logger botLogger = Util.setupLogger(Logger.getLogger("BOT"),  "SidethreadData/bot_history.log", "bot");
     private static final LinkedBlockingDeque<FuncWithArgs> queue = new LinkedBlockingDeque<>();
-    private record FuncWithArgs(String func_name, String[] args, Flags flags, List<Statable> counting_threads) {}
+    private record FuncWithArgs(String func_name, String[] args, Flags flags, List<CountingThread> counting_threads, int count_duration_type) {}
     static {
+        generateThreadAliases();
+    }
+    public static void generateThreadAliases() {
         File f = new File("SidethreadData/SidethreadAliases.txt");
         try(Scanner in = new Scanner(f)) {
             while(in.hasNextLine()) {
@@ -32,7 +36,12 @@ public class UpdateParser {
         } catch(FileNotFoundException e) {
             e.printStackTrace();
         }
+        for(CountingThread thread:AllThreads.all_threads) {
+            aliases.put(thread.thread.name.replace("_",""), thread.thread.name);
+        }
     }
+
+    @SuppressWarnings("SpellCheckingInspection")
     public static String parse(String body, String user, String uuid) {
         String[] split = body.split("!\\{:}");
         if(split.length < 2) return null;
@@ -44,18 +53,17 @@ public class UpdateParser {
         }
         recent_uuids.addLast(uuid);
         String[] args = body.split(" ");
-        Set<Statable> counting_threads_set = new HashSet<>();
+        Set<CountingThread> counting_threads_set = new LinkedHashSet<>();
         int i;
         for(i=0;i<args.length;i++) {
             boolean to_remove = args[i].charAt(0) == '-';
-            String arg = args[i].replaceAll("-|_","");
-            List<Statable> threads_to_add = switch(arg) {
-                case "favorites","favourites" -> CombinedStats.favorites;
-                case "traditional" -> CombinedStats.traditional;
-                case "double", "doublecounting" -> CombinedStats.double_counting;
-                case "nomistakesthread" -> CombinedStats.no_mistakes;
-                case "other","miscellaneous" -> CombinedStats.miscellaneous;
-                case "allthreads" -> CombinedStats.all_threads;
+            String arg = args[i].replaceAll("[-_]","");
+            List<CountingThread> threads_to_add = switch(arg) {
+                case "traditional" -> AllThreads.traditional;
+                case "double", "doublecountingthread" -> AllThreads.double_counting;
+                case "nomistakesthread" -> AllThreads.no_mistakes;
+                case "other","miscellaneous" -> AllThreads.miscellaneous;
+                case "allthreads" -> AllThreads.all_threads;
                 default -> new ArrayList<>();
             };
             if(threads_to_add.isEmpty()) {
@@ -64,7 +72,7 @@ public class UpdateParser {
                     threads_to_add.add(all_threads.get(thread_name));
                 }
             }
-            if(threads_to_add.size()!=0) {
+            if(!threads_to_add.isEmpty()) {
                 if(to_remove) {
                     threads_to_add.forEach(counting_threads_set::remove);
                 } else {
@@ -73,75 +81,190 @@ public class UpdateParser {
             } else break;
         }
         args = Arrays.copyOfRange(args,i,args.length);
-        List<Statable> counting_threads = counting_threads_set.stream().toList();
+        List<CountingThread> counting_threads = counting_threads_set.stream().toList();
         botLogger.getHandlers()[0].setFormatter(new MyFormatter(user));
         botLogger.info(body);
         String func_name = args.length > 0 ? args[0].toLowerCase().replaceAll("_","") : "about";
-        Flags flags = new Flags(user, new UUID(uuid));
+        int count_duration_type = 0; // 0: uuid, 1: date, 2: k, 3: count, 4: update
+        String start_date = null;
+        String end_date = null;
+        Flags flags = new Flags(user);
         try {
             for (int j = 1; j < args.length; j++) {
-                if (args[j].charAt(0) != '-') continue;
+                if (args[j].isEmpty() || args[j].charAt(0) != '-') continue;
                 switch (args[j].toLowerCase().replaceAll("_", "")) {
-                    case "-u", "-username","-t","-thread" -> {flags.username = args[j + 1];flags.username_modified=true;}
-                    case "-p", "-position" -> flags.position = Integer.parseInt(args[j + 1]);
-                    case "-c", "-context" -> flags.context = Integer.parseInt(args[j + 1]);
-                    case "-su", "-startuuid" -> flags.start_uuid = new UUID(args[j + 1]);
-                    case "-eu", "-enduuid" -> flags.end_uuid = new UUID(args[j + 1]);
-                    case "-sd", "-startdate" -> flags.start_date = args[j + 1];
-                    case "-ed", "-enddate" -> flags.end_date = args[j + 1];
-                    case "-current" -> flags.is_current = true;
-                    case "-mode" -> flags.mode = Integer.parseInt(args[j + 1]);
-                    case "-ks", "-ksize" -> flags.gets_per_k = Integer.parseInt(args[j + 1]);
-                    case "-sk", "-startk" -> flags.start_k = Integer.parseInt(args[j + 1]);
-                    case "-ek", "-endk" -> flags.end_k = Integer.parseInt(args[j + 1]);
-                    case "-mp", "-minparts" -> flags.min_parts = Integer.parseInt(args[j + 1]);
-                    case "-d", "-duration" -> flags.duration_seconds = Integer.parseInt(args[j + 1]);
-                    case "-combined" -> flags.thread_stats_combined = true;
+                    case "-u", "-username" -> {flags.username = args[j + 1];flags.username_modified=true;}
+                    case "-p", "-position" -> flags.position = Math.max(1, Integer.parseInt(args[j + 1]));
+                    case "-c", "-context" -> flags.context = Math.max(0, Integer.parseInt(args[j + 1]));
+                    case "-su", "-startuuid" -> {
+                        flags.start_uuid = new UUID(args[j + 1]);
+                        count_duration_type = 0;
+                    }
+                    case "-eu", "-enduuid" -> {
+                        flags.end_uuid = new UUID(args[j + 1]);
+                        count_duration_type = 0;
+                    }
+                    case "-sd", "-startdate" -> {
+                        start_date = args[j + 1];
+                        count_duration_type = 1;
+                    }
+                    case "-ed", "-enddate" -> {
+                        end_date = args[j + 1];
+                        count_duration_type = 1;
+                    }
+                    case "-tp", "-timeperiod" ->
+                        flags.time_period = switch(args[j + 1]) {
+                            case "m", "month" -> ParticipationDuration.MONTH;
+                            case "y", "year" -> ParticipationDuration.YEAR;
+                            default -> ParticipationDuration.DAY;
+                        };
+                    case "-sk", "-startk" -> {
+                        flags.start_k = Math.max(0, Integer.parseInt(args[j + 1]));
+                        count_duration_type = 2;
+                    }
+                    case "-ek", "-endk" -> {
+                        flags.end_k = Math.max(0, Integer.parseInt(args[j + 1]));
+                        count_duration_type = 2;
+                    }
+                    case "-ks", "-ksize" -> flags.k_size = Math.max(1, Integer.parseInt(args[j + 1]));
+
+                    case "-sc", "-startcount" -> {
+                        flags.start_count = Math.max(1,Integer.parseInt(args[j + 1]))-1;
+                        count_duration_type = 3;
+                    }
+                    case "-ec", "-endcount" -> {
+                        flags.end_count = Math.max(1, Integer.parseInt(args[j + 1]));
+                        count_duration_type = 3;
+                    }
+                    case "-sup", "-startupdate" -> {
+                        flags.start_update = Math.max(1,Integer.parseInt(args[j + 1]))-1;
+                        count_duration_type = 4;
+                    }
+                    case "-eup", "-endupdate" -> {
+                        flags.end_update = Math.max(1,Integer.parseInt(args[j + 1]));
+                        count_duration_type = 4;
+                    }
+                    case "-mc", "-mincounts" -> flags.min_counts = Math.max(1, Integer.parseInt(args[j + 1]));
+                    case "-offset","-o" -> flags.offset = Integer.parseInt(args[j + 1]);
                     case "-%", "-percentage" -> flags.percentage = Float.parseFloat(args[j + 1]);
-                    case "-sc", "-startcount" -> flags.start_count = Integer.parseInt(args[j + 1]);
-                    case "-ec", "-endcount" -> flags.end_count = Integer.parseInt(args[j + 1]);
-                    case "-cbr","-countsbetweenreplies" -> flags.counts_between_replies = Integer.parseInt(args[j + 1]);
-                    case "-cap" -> flags.cap = Integer.parseInt(args[j + 1]);
-                    case "-offset","-o" -> {flags.offset = Integer.parseInt(args[j + 1]);flags.offset_modified=true;}
-                    case "-exact","-e" -> flags.is_exact=true;
+                    case "-mode" -> flags.mode = Integer.parseInt(args[j + 1]);
+                    case "-d", "-duration" -> {
+                        flags.duration_modified = true;
+                        flags.duration = Math.max(1,Integer.parseInt(args[j + 1]));
+                    }
+                    case "-cbr","-countsbetweenreplies" -> flags.counts_between_replies = Math.max(1,Integer.parseInt(args[j + 1]));
+                    case "-un", "-unique" -> flags.unique = true;
+                    case "-up", "-updates" -> flags.use_counts = false;
+                    case "-t", "-threads" -> flags.use_counters = false;
+                    case "-com", "-combined" -> flags.thread_counts_combined = true;
+                    case "-add", "-addthreadstats" -> flags.add_thread_stats = true;
+                    case "-dup", "-allowduplicatecounters" -> flags.allow_duplicate_counters = true;
+                    case "-s", "-splits" -> flags.use_ks = false;
+                    case "-slowest", "-most", "-worst", "-antifecta", "-maximum", "-lastcounts" -> flags.first = false;
+                    case "-current" -> flags.include_current = true;
+                    case "-exclude" -> flags.exclude_100 = true;
                 }
             }
-        } catch(NumberFormatException e) {
+        } catch(NumberFormatException | IndexOutOfBoundsException | DateTimeParseException e) {
             return "Illegal arguments to "+func_name;
         }
-        queue.add(new FuncWithArgs(func_name,args,flags,counting_threads));
+        if(flags.percentage > 1) flags.percentage = 1f;
+        else if(flags.percentage < 0) flags.percentage = 0f;
+        if(start_date!=null) flags.start_date = new Stats.TimeUnit(start_date, flags.time_period);
+        if(end_date!=null) flags.end_date = new Stats.TimeUnit(end_date, flags.time_period);
+        if(!flags.username_modified && !flags.use_counters) flags.username = "main";
+        else if(!flags.use_counters) flags.username = aliases.getOrDefault(flags.username, flags.username);
+        updateUUID(counting_threads, flags, count_duration_type);
+        queue.add(new FuncWithArgs(func_name,args,flags,counting_threads, count_duration_type));
         return null;
     }
-    private static String getOrdinal(int num) {
-        String ordinal = "th";
-        if(num%10==3&&num%100!=13) ordinal = "rd";
-        else if(num%10==2&&num%100!=12) ordinal = "nd";
-        else if(num%10==1&&num%100!=11) ordinal = "st";
-        return num+ordinal;
+
+    private static void updateUUID(List<CountingThread> threads, Flags flags, int count_duration_type) {
+        switch(count_duration_type) {
+            //Date
+            case 1 -> {
+                flags.start_uuid = Util.getUUIDFromDate(flags.start_date, CountingThread.timezone);
+                flags.end_uuid = Util.getUUIDFromDate(flags.end_date, CountingThread.timezone);
+            }
+            //K
+            case 2 -> {
+                if(threads.size()!=1) return;
+                CountingThread thread = threads.get(0);
+                if(thread.thread.resetOnMistakes) return;
+                List<StatLoader.Split> ks = thread.splits(0, Integer.MAX_VALUE, flags.k_size, true);
+                if(ks.size() > flags.start_k) flags.start_uuid = ks.get(flags.start_k).start_count().getUUID();
+                if(ks.size() > flags.end_k) flags.end_uuid = ks.get(flags.end_k).start_count().getUUID();
+            }
+            //Count
+            case 3 -> {
+                long start = getNthCountTimestamp(threads, flags.start_count, true, flags.thread_counts_combined);
+                long end = getNthCountTimestamp(threads, flags.end_count, true, flags.thread_counts_combined);
+                if(start>=0) flags.start_uuid = new UUID(start, 0);
+                if(end>=0) flags.end_uuid = new UUID(end, 0);
+            }
+            //Update
+            case 4 -> {
+                long start = getNthCountTimestamp(threads, flags.start_update, false, flags.thread_counts_combined);
+                long end = getNthCountTimestamp(threads, flags.end_update, false, flags.thread_counts_combined);
+                if(start>=0) flags.start_uuid = new UUID(start, 0);
+                if(end>=0) flags.end_uuid = new UUID(end, 0);
+            }
+        }
+    }
+    private static long getFirstCountTimestamp(List<CountingThread> threads, boolean use_counts) {
+        long first = Long.MAX_VALUE;
+        for(CountingThread thread:threads) {
+            long current = thread.getFirstUpdateTimestamp(use_counts ? CountDataType.COUNT : CountDataType.UPDATE);
+            if(current < first) first = current;
+        }
+        return first;
+    }
+    private static long getLastCountTimestamp(List<CountingThread> threads, boolean use_counts) {
+        long last = 0L;
+        for(CountingThread thread:threads) {
+            long current = thread.getLastUpdateTimestamp(use_counts ? CountDataType.COUNT : CountDataType.UPDATE);
+            if(current > last) last = current;
+        }
+        return last;
+    }
+    private static long getNthCountTimestamp(List<CountingThread> threads, int n, boolean use_counts, boolean thread_counts_combined) {
+        if(threads.size()==1) return ((UpdateOrCountValue)threads.get(0).getUpdateOrCount(n, use_counts ? CountDataType.COUNT : CountDataType.UPDATE)).getTimestamp();
+        if(!thread_counts_combined) return -1L;
+        if(threads.size()==AllThreads.all_threads.size()) return ((UpdateOrCountValue)AllThreads.combined_thread.getUpdateOrCount(n, use_counts ? CountDataType.COUNT : CountDataType.UPDATE)).getTimestamp();
+        StatContainer nth_count = CombinedStats.nthCount(threads, UUID.minUUID(), UUID.maxUUID(), n+1, true, false, use_counts, true);
+        if(nth_count.size()==0) return -1L;
+        return ((UpdateOrCountValue)nth_count.getStat().get(0)[2]).getTimestamp();
     }
 
+    @SuppressWarnings("SpellCheckingInspection")
     public static void runQueue() throws InterruptedException, IOException, URISyntaxException {
         if(running) return;
         running = true;
         while(true) {
             FuncWithArgs data = queue.poll(Long.MAX_VALUE, TimeUnit.DAYS);
             String output = "If you see this, something went wrong.";
-            String header = "";
-            String[] table_headers = null;
-            Map<String, ? extends Comparable> countData1 = null;
-            List<? extends NonUnique> countData2 = null;
-            boolean reversed = false;
+            StatContainer count_data = null;
             assert data != null;
-            if(data.counting_threads.size()==0) {
-                switch(data.func_name) {
+            int count_duration_type = data.count_duration_type;
+            if(data.counting_threads.isEmpty()) {
+                switch (data.func_name) {
                     case "help" -> output = "View the documentation [here](https://counting.gg/blog/17193695-6525-4954-9194-463781954194)";
+                    case "quote" -> {
+                        Random random = new Random();
+                        int length = random.nextInt(30)+2;
+                        try {
+                            output = CombinedStats.lcbotQuote(data.flags.username, length);
+                        } catch (IllegalArgumentException e) {
+                            output = e.getMessage();
+                        }
+                    }
                     case "10milliondollars" -> {
                         Long result = Counters.addMoney(data.flags.username, 10000000L);
                         if(result == null) output = data.flags.username+" does not exist.";
                         else output = data.flags.username + " now has " + result + " dollars";
                     }
                     case "threadlist" -> {
-                        if(!data.flags.username_modified || !aliases.containsKey(data.flags.username.replaceAll("-|_",""))) {
+                        if(!data.flags.username_modified || !aliases.containsKey(data.flags.username.replaceAll("[-_]",""))) {
                             StringBuilder sb = new StringBuilder("There are currently ");
                             sb.append(all_threads.size()).append(" total threads.  \n");
                             for (String key : all_threads.keySet()) {
@@ -152,7 +275,7 @@ public class UpdateParser {
                             String sb1 = "The thread " + data.flags.username + " has ";
                             StringBuilder sb2 = new StringBuilder(" aliases.  \n");
                             int amount = 0;
-                            String arg = aliases.get(data.flags.username.replaceAll("-|_",""));
+                            String arg = aliases.get(data.flags.username.replaceAll("[-_]",""));
                             for (String key : aliases.keySet()) {
                                 if(aliases.get(key).equals(arg)) {
                                     amount++;
@@ -162,776 +285,194 @@ public class UpdateParser {
                             output = sb1+amount+sb2;
                         }
                     }
-                    case "updateall" ->    {
-                        if(Arrays.binarySearch(admins, data.flags.username) < 0) output = "User does not have privileges to run this command";
+                    case "updateall" -> {
+                        if(data.flags.username_modified) output = "Must be run without -u parameter";
+                        else if(Arrays.binarySearch(admins, data.flags.username) < 0) output = "User does not have privileges to run this command";
                         else {
-                            CombinedStats.updateAllDatabases();
+                            AllThreads.updateFullDB();
                             output = "Successfully updated all threads";
                         }
                     }
-                    case "exacta","trifecta" -> {
-                        header = header + "Exactas for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                        countData1 = CombinedStats.trifecta(data.flags.start_uuid, data.flags.end_uuid);
-                        table_headers = new String[]{"Username", "Trifectas", "Exactas", "Chalupa Exactas", "Poonxactas", "trejexactas"};
-                    }
-                    case "exactadayparts", "trifectadayparts", "exactamonthparts", "trifectamonthparts", "exactayearparts", "trifectayearparts" -> {
-                        ParticipationDuration mode = switch (data.func_name) {
-                            case "exactadayparts","trifectadayparts" -> ParticipationDuration.DAY;
-                            case "exactamonthparts","trifectamonthparts" -> ParticipationDuration.MONTH;
-                            case "exactayearparts","trifectayearparts" -> ParticipationDuration.YEAR;
-                            default -> null;
-                        };
-                        header = header + "Exactas "+mode.toString().toLowerCase()+" parts for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                        countData1 = CombinedStats.exacta_day_parts(data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode);
-                        System.out.println(countData1);
-                        table_headers = new String[]{"Username", "Trifectas", "Exactas", "Chalupa Exactas", "Poonxactas", "trejexactas"};
-                    }
-                    case "exactadaystreak", "trifectadaystreak", "exactamonthstreak", "trifectamonthstreak", "exactayearstreak", "trifectayearstreak" -> {
-                        ParticipationDuration mode = switch (data.func_name) {
-                            case "exactadaystreak","trifectadaystreak" -> ParticipationDuration.DAY;
-                            case "exactamonthstreak","trifectamonthstreak" -> ParticipationDuration.MONTH;
-                            case "exactayearstreak","trifectayearstreak" -> ParticipationDuration.YEAR;
-                            default -> null;
-                        };
-                        String mode_str = switch(data.flags.mode) {
-                            case 0 -> " trifecta ";
-                            case 1 -> " chalupa exacta ";
-                            case 2 -> " poonexacta ";
-                            case 3 -> " trejexacta ";
-                            default -> " exacta ";
-                        };
-                        header = header + (data.flags.is_current?"Current":"Record") + mode_str+mode.toString().toLowerCase() + " streak for "+data.flags.username+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                        countData1 = CombinedStats.exacta_day_streak(data.flags.mode, data.flags.getStartDate(mode), data.flags.getEndDate(mode),data.flags.is_current, mode);
-                        table_headers = new String[]{"Username", "Streak","Start","End"};
-                    }
-                    case "nonuniqueexactadaystreak", "nonuniquetrifectadaystreak", "nonuniqueexactamonthstreak", "nonuniquetrifectamonthstreak", "nonuniqueexactayearstreak", "nonuniquetrifectayearstreak" -> {
-                        ParticipationDuration mode = switch (data.func_name) {
-                            case "nonuniqueexactadaystreak","nonuniquetrifectadaystreak" -> ParticipationDuration.DAY;
-                            case "nonuniqueexactamonthstreak","nonuniquetrifectamonthstreak" -> ParticipationDuration.MONTH;
-                            case "nonuniqueexactayearstreak","nonuniquetrifectayearstreak" -> ParticipationDuration.YEAR;
-                            default -> null;
-                        };
-                        String mode_str = switch(data.flags.mode) {
-                            case 0 -> "Trifecta ";
-                            case 1 -> "Chalupa exacta ";
-                            case 2 -> "Poonexacta ";
-                            case 3 -> "Trejexacta ";
-                            default -> "Exacta ";
-                        };
-                        header = header + mode_str+mode.toString().toLowerCase() + " streaks at position "+data.flags.position+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                        countData2 = CombinedStats.non_unique_exacta_day_streak(data.flags.mode, data.flags.getStartDate(mode), data.flags.getEndDate(mode),mode);
-                        table_headers = new String[]{"Username", "Streak","Start","End"};
-                    }
-                    default -> output = "You are trying to run this command without any threads";
+                    default -> output = "The command does not exist for 0 threads";
                 }
             } else {
                 try {
-                    StringBuilder sb = new StringBuilder("*Thread");
-                    if (data.counting_threads.size() == 1) {
-                        sb.append(": ").append(data.counting_threads.get(0).getName());
-                    } else {
-                        sb.append("s: ").append(data.counting_threads.get(0).getName());
-                        for (int i=1;i<data.counting_threads.size();i++) {
-                            sb.append(", ").append(data.counting_threads.get(i).getName());
-                        }
-                    }
-                    sb.append("*\n\n");
-                    header = sb.toString();
                     switch (data.func_name) {
-                        case "hoc" -> {
-                            header = header + "HoC for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.cappedHoCTime(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.cap);
-                            table_headers = new String[]{"Username", "Counts"};
-                        }
-                        case "kparts" -> {
-                            header = header + "Hall of " + data.flags.gets_per_k + "K parts for " + data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData1 = CombinedStats.combinedKParts(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.gets_per_k);
-                            table_headers = new String[]{"Username", "K Parts"};
-                        }
-                        case "dayparts", "monthparts", "yearparts" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "dayparts" -> ParticipationDuration.DAY;
-                                case "monthparts" -> ParticipationDuration.MONTH;
-                                case "yearparts" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + "Hall of " + mode.toString().toLowerCase() + " parts for " + data.flags.username + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combinedDayParts(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode, data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username", mode.toCapitalizedString()+ " Parts"};
-                        }
-                        case "countsperday", "countspermonth", "countsperyear" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "countsperday" -> ParticipationDuration.DAY;
-                                case "countspermonth" -> ParticipationDuration.MONTH;
-                                case "countsperyear" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + "Counts per " + mode.toString().toLowerCase() + " for " + data.flags.username + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combinedCountsPerDay(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode);
-                            table_headers = new String[]{"Username", "Counts per "+mode.toString().toLowerCase()};
-                        }
-                        case "peakcountsperday", "peakcountspermonth", "peakcountsperyear" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "peakcountsperday" -> ParticipationDuration.DAY;
-                                case "peakcountspermonth" -> ParticipationDuration.MONTH;
-                                case "peakcountsperyear" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + "Peak counts per " + mode.toString().toLowerCase() + " for " + data.flags.username + " between days " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combinedPeakCountsPerDay(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode, data.flags.min_parts);
-                            table_headers = new String[]{"Username", "Counts per "+mode.toString().toLowerCase()};
-                        }
-                        case "hourparts" -> {
-                            header = header + "Hall of " + data.flags.duration_seconds + " second parts for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.hourParts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_seconds, data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username", "Hour Parts"};
-                        }
-                        case "hop","participation" -> {
-                            header = header + "Hall of participation for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combinedParticipation(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Score","Counts", "Gets","Assists","K Parts","Day Parts"};
-                        }
-                        case "gets","assists" -> {
-                            if(data.func_name().equals("assists") && !data.flags.offset_modified) data.flags.offset = 1;
-                            String header_center = switch(data.flags.offset) {
-                                case 0 -> "gets";
-                                case 1 -> "assists";
-                                default -> "gets with offset "+data.flags.offset;
-                            };
-                            header = header + "Hall of "+header_center+" for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combinedGets(data.counting_threads, data.flags.start_k, data.flags.end_k,data.flags.gets_per_k,data.flags.offset);
-                            table_headers = new String[]{"Username", "Gets"};
-                        }
-                        case "day", "month", "year" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "day" -> ParticipationDuration.DAY;
-                                case "month" -> ParticipationDuration.MONTH;
-                                case "year" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + "That " + mode.toString().toLowerCase() + " hoc looked like this:";
-                            data.flags.start_date = data.args[1];
-                            countData1 = CombinedStats.combinedDayHoc(data.counting_threads, data.flags.getStartDate(mode), mode);
-                            table_headers = new String[]{"Username", "Counts"};
-                        }
-                        case "first_count" -> {
-                            header = header + "First count for " + data.flags.username + " after " + data.flags.start_uuid;
-                            countData1 = CombinedStats.overallFirstCounts(data.counting_threads, data.flags.start_uuid);
-                            table_headers = new String[]{"Username", "First Count"};
-                        }
-                        case "last_count" -> {
-                            header = header + "Last count for " + data.flags.username + " before " + data.flags.start_uuid;
-                            countData1 = CombinedStats.overallLastCounts(data.counting_threads, data.flags.start_uuid);
-                            table_headers = new String[]{"Username", "Last Count"};
-                        }
-                        case "daymedals","monthmedals","yearmedals","cotd","cotm","coty" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "daymedals", "cotd" -> ParticipationDuration.DAY;
-                                case "monthmedals", "cotm" -> ParticipationDuration.MONTH;
-                                case "yearmedals", "coty" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toCapitalizedString()+" medals for " + data.flags.username + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combinedMedals(data.counting_threads, data.flags.getStartDate(mode),data.flags.getEndDate(mode),mode,data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username","Gold","Silver","Bronze","Total"};
-                        }
-                        case "kmedals"-> {
-                            header = header + data.flags.gets_per_k+"k medals for " + data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData1 = CombinedStats.combinedKMedals(data.counting_threads, data.flags.start_k,data.flags.end_k,data.flags.gets_per_k);
-                            table_headers = new String[]{"Username","Gold","Silver","Bronze","Total"};
-                        }
-//                        case "daily_counts", "monthly_counts", "yearly_counts" -> {
-//                            ParticipationDuration mode = switch (data.func_name) {
-//                                case "daily_counts" -> ParticipationDuration.DAY;
-//                                case "monthly_counts" -> ParticipationDuration.MONTH;
-//                                case "yearly_counts" -> ParticipationDuration.YEAR;
-//                                default -> null;
-//                            };
-//                            header = header + "That " + mode.toString().toLowerCase() + " hoc looked like this:";
-//                            countData1 = CombinedStats.combined_total_count_day_hocs(data.counting_threads, data.flags.getStartDate(mode), mode);
-//                            table_headers = new String[]{"Username", "Counts"};
-//                        }
-                        case "daystreak", "monthstreak", "yearstreak" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "daystreak" -> ParticipationDuration.DAY;
-                                case "monthstreak" -> ParticipationDuration.MONTH;
-                                case "yearstreak" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + (data.flags.is_current?"Current ":"Record ") + mode.toString().toLowerCase() + " streak for "+data.flags.username+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combined_day_streak(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),data.flags.min_parts,mode,data.flags.is_current, data.flags.is_exact);
-                            table_headers = new String[]{"Username", "Streak","Start","End"};
-                        }
-                        case "nonuniquedaystreak", "nonuniquemonthstreak", "nonuniqueyearstreak" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "nonuniquedaystreak" -> ParticipationDuration.DAY;
-                                case "nonuniquemonthstreak" -> ParticipationDuration.MONTH;
-                                case "nonuniqueyearstreak" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toCapitalizedString() + " streaks at position "+data.flags.position +" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData2 = CombinedStats.combined_day_streak_non_unique(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),data.flags.min_parts,mode);
-                            table_headers = new String[]{"Username", "Streak","Start","End"};
-                        }
-                        case "palindromes","dromes" -> {
-                            header = header + "Palindromes for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_palindromes(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Dromes"};
-                        }
-                        case "repdigits" -> {
-                            header = header + "Repdigits for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_repdigits(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Repdigits"};
-                        }
-                        case "nrep" -> {
-                            header = header + data.args[1]+"-reps for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_n_rep(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,Integer.parseInt(data.args[1]));
-                            table_headers = new String[]{"Username", data.args[1]+"-reps"};
-                        }
-                        case "basen" -> {
-                            header = header + "base "+data.args[1]+" counts for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_base_n(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,Integer.parseInt(data.args[1]));
-                            table_headers = new String[]{"Username", "base "+data.args[1]+" counts"};
-                        }
-                        case "daysoverncounts", "monthsoverncounts", "yearsoverncounts" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "daysoverncounts" -> ParticipationDuration.DAY;
-                                case "monthsoverncounts" -> ParticipationDuration.MONTH;
-                                case "yearsoverncounts" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toCapitalizedString() + "s over "+data.args[1]+" counts for "+data.flags.username+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combined_days_over_n_counts(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),Integer.parseInt(data.args[1]),mode,data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username", mode.toCapitalizedString() + "s"};
-                        }
-                        case "threaddaysoverncounts", "threadmonthsoverncounts", "threadyearsoverncounts" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "threaddaysoverncounts" -> ParticipationDuration.DAY;
-                                case "threadmonthsoverncounts" -> ParticipationDuration.MONTH;
-                                case "threadyearsoverncounts" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            if(!data.flags.username_modified) data.flags.username = "main";
-                            header = header + mode.toCapitalizedString() + "s over "+data.args[1]+" counts for "+data.flags.username+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.thread_days_over_n_counts(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),Integer.parseInt(data.args[1]),mode);
-                            table_headers = new String[]{"Thread", mode.toCapitalizedString() + "s"};
-                        }
-                        case "dayrecord", "monthrecord", "yearrecord" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "dayrecord" -> ParticipationDuration.DAY;
-                                case "monthrecord" -> ParticipationDuration.MONTH;
-                                case "yearrecord" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toCapitalizedString() + " record for "+data.flags.username+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.combined_unique_top_counts_per_day(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),mode,data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username", mode.toCapitalizedString() + " record", "Date"};
-                        }
-                        case "topcountsperday", "topcountspermonth", "topcountsperyear" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "topcountsperday" -> ParticipationDuration.DAY;
-                                case "topcountspermonth" -> ParticipationDuration.MONTH;
-                                case "topcountsperyear" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + "Top counts per "+mode.toString().toLowerCase()+" around position "+data.flags.position+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData2 = CombinedStats.combined_non_unique_top_counts_per_day(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),mode,data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username", "Counts", "Date"};
-                        }
-                        case "threaddayrecord", "threadmonthrecord", "threadyearrecord" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "threaddayrecord" -> ParticipationDuration.DAY;
-                                case "threadmonthrecord" -> ParticipationDuration.MONTH;
-                                case "threadyearrecord" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toCapitalizedString() + " record for "+data.flags.username+" between "+ data.flags.getStartDate(mode)+" and "+data.flags.getEndDate(mode);
-                            countData1 = CombinedStats.thread_day_records(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode),mode);
-                            table_headers = new String[]{"Thread", mode.toCapitalizedString() + " record","Date"};
-                        }
-                        case "recordhour","recordhouroffset" -> {
-                            boolean offset = data.func_name.equals("recordhouroffset");
-                            header = header + "Record " + data.flags.duration_seconds + "s period for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            if(data.flags.thread_stats_combined) {
-                                countData1 = CombinedStats.combined_record_hour(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_seconds, offset);
-                                table_headers = new String[]{"Username", "Record Hour"};
-                            } else {
-                                countData1 = CombinedStats.overall_record_hour(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_seconds, offset);
-                                table_headers = new String[]{"Username", "Record Hour","Thread"};
-                            }
-                        }
-                        case "threadrecordhour" -> {
-                            header = header + "Record " + data.flags.duration_seconds + "s period at position " + data.flags.position + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData2 = CombinedStats.overall_thread_record_hour(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_seconds);
-                            table_headers = new String[]{"Hour", "Counts","Thread"};
-                        }
-                        case "dominantncounts" -> {
-                            header = header + "Most dominant " + data.args[1] + " count period for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_most_dominant_n_counts(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Counts", "Thread", "Start HoC", "End HoC", "Start Count", "End Count"};
-                        }
-                        case "perfectstreak" -> {
-                            header = header + "Record perfect streak for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_perfect_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.counts_between_replies);
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start Count", "End Count"};
-                        }
-                        case "nonuniqueperfectstreak" -> {
-                            header = header + "Perfect streaks at position "+ data.flags.position + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData2 = CombinedStats.overall_non_unique_perfect_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.counts_between_replies);
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start Count", "End Count"};
-                        }
-                        case "rotationstreak","doubleperfectstreak" -> {
-                            header = header + "Rotation streaks at position "+ data.flags.position + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData2 = CombinedStats.overall_non_unique_rotation_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.counts_between_replies);
-                            table_headers = new String[data.flags.counts_between_replies+4];
-                            for(int i=0;i<data.flags.counts_between_replies;i++) {
-                                table_headers[i] = "User " + (i+1);
-                            }
-                            table_headers[table_headers.length-4] = "Streak";
-                            table_headers[table_headers.length-3] = "Thread";
-                            table_headers[table_headers.length-2] = "Start Count";
-                            table_headers[table_headers.length-1] = "End Count";
-                        }
-                        case "fastestselfreplies" -> {
-                            header = header + "Fastest self replies for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData2 = CombinedStats.overall_fastest_self_replies(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, 1000);
-                            table_headers = new String[]{"Username", "Time", "Count", "Thread"};
-                        }
-                        case "medianselfreply" -> {
-                            header = header + "Median reply times for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.medianSelfReplyTime(data.counting_threads, data.flags.min_parts, data.flags.start_uuid, data.flags.end_uuid);
-                            reversed = true;
-                            table_headers = new String[]{"Username", "Time"};
-                        }
-                        case "countingpairs" -> {
-                            header = header + "Counts between "+ data.args[1]+" and "+data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            if(data.flags.username.compareTo(data.args[1])<0) {
-                                data.flags.username += "|"+data.args[1];
-                            } else {
-                                data.flags.username = data.args[1] +"|"+ data.flags.username;
-                            }
-                            countData1 = CombinedStats.combined_counting_pairs(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"User 1", "User 2", "Counts"};
-                        }
-                        case "hourcountingpairs" -> {
-                            header = header + "Record hourly counts between "+ data.args[1]+" and "+data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            if(data.flags.username.compareTo(data.args[1])<0) {
-                                data.flags.username += "|"+data.args[1];
-                            } else {
-                                data.flags.username = data.args[1] +"|"+ data.flags.username;
-                            }
-                            countData1 = CombinedStats.record_counting_pairs_by_hour(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_seconds);
-                            table_headers = new String[]{"User 1", "User 2", "Counts","Thread"};
-                        }
-                        case "usercountingpairs" -> {
-                            header = header + "Counts between "+ data.args[1]+" and "+data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_counting_pair_specific_user(data.counting_threads, data.args[1], data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Counts"};
-                        }
-                        case "percentofcountswithuser" -> {
-                            header = header + "Percentage of counts "+ data.args[1]+" has with "+data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.percentage_of_combined_counts_users_have_with_specific_user(data.counting_threads, data.args[1], data.flags.min_parts, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Percentage"};
-                        }
-                        case "favoritecounter","favouritecounter" -> {
-                            header = header + "Favorite counter for "+data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_favorite_counter(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"User 1", "User 2", "Counts"};
-                        }
-                        case "timespenthavinglastcount" -> {
-                            header = header + "Time "+data.flags.username + "has held the last count between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_time_spent_having_last_count(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.thread_stats_combined);
-                            table_headers = new String[]{"Username", "Time"};
-                        }
-                        case "nmsreplies" -> {
-                            header = header + "Most "+data.args[1]+"ms replies for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combinedMsBetweenUpdates(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]));
-                            table_headers = new String[]{"Username", "Amount"};
-                        }
-                        case "subnmsselfreplystreak" -> {
-                            header = header + "Longest sub "+data.args[1]+"ms self reply streak for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_counts_under_n_ms_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]));
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start Count", "End Count"};
-                        }
-                        case "oddratio","evenratio" -> {
-                            boolean is_odd = data.func_name.equals("oddratio");
-                            header = header + (is_odd?"Ddd":"Even")+" ratio for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_odd_even_ratio(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.min_parts, is_odd);
-                            table_headers = new String[]{"Username", "Ratio"};
-                        }
-                        case "uniquehourpartsinday","uniquehourpartsinweek" -> {
-                            boolean is_day = data.func_name.equals("uniquehourpartsinday");
-                            header = header + "Unique "+(is_day?"day":"week")+" "+data.flags.duration_seconds+"s parts for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_unique_time_parts(data.counting_threads, data.flags.duration_seconds, is_day, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", data.flags.duration_seconds+"s parts"};
-                        }
-                        case "dailypercentofcounts","monthlypercentofcounts","yearlypercentofcounts" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "dailypercentofcounts" -> ParticipationDuration.DAY;
-                                case "monthlypercentofcounts" -> ParticipationDuration.MONTH;
-                                case "yearlypercentofcounts" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toOtherCapitalizedString()+" percentage of counts at position "+ data.flags.position + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData2 = CombinedStats.daily_percent_of_combined_counts(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode);
-                            table_headers = new String[]{mode.toCapitalizedString(), "%", "Username", "User Counts", "Day Counts"};
-                        }
-                        case "nthplacedailypercentofcounts","nthplacemonthlypercentofcounts","nthplaceyearlypercentofcounts" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "nthplacedailypercentofcounts" -> ParticipationDuration.DAY;
-                                case "nthplacemonthlypercentofcounts" -> ParticipationDuration.MONTH;
-                                case "nthplaceyearlypercentofcounts" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toOtherCapitalizedString()+" percentage of counts in "+getOrdinal(Integer.parseInt(data.args[1]))+" place at position "+ data.flags.position + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData2 = CombinedStats.nth_place_daily_percent_of_combined_counts(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), Integer.parseInt(data.args[1]), mode);
-                            table_headers = new String[]{mode.toCapitalizedString(), "%", "Username", "User Counts", "Day Counts"};
-                        }
-                        case "dailyphotofinish","monthlyphotofinish","yearlyphotofinish" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "dailyphotofinish" -> ParticipationDuration.DAY;
-                                case "monthlyphotofinish" -> ParticipationDuration.MONTH;
-                                case "yearlyphotofinish" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toOtherCapitalizedString()+" photo finishes at position "+ data.flags.position + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData2 = CombinedStats.combined_photo_finishes(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode, data.flags.percentage, data.flags.min_parts);
-                            table_headers = new String[]{"User 1", "User 1 Counts", "User 2", "User 2 Counts", "%", mode.toCapitalizedString()};
-                        }
-                        case "largestcliques" -> {
-                            header = header + "Largest clique "+ data.flags.username + " is contained in between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.largestCliques(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.min_parts);
-                            table_headers = new String[]{"Username", "Size"};
-                        }
-                        case "highestusernotcountedwith" -> {
-                            header = header + "Counters with the most counts that "+ data.flags.username + " has not counted with between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combined_highest_user_not_counted_with(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "User 1","User 2","User 3","User 4","User 5"};
-                        }
-                        case "perfectks","p500" -> {
-                            header = header + "Total perfect "+data.flags.gets_per_k+"ks for "+ data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData1 = CombinedStats.combined_perfect_ks(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.gets_per_k);
-                            table_headers = new String[]{"Username", "Perfect "+data.flags.gets_per_k+"ks"};
-                        }
-                        case "nthcount" -> {
-                            header = header + getOrdinal(Integer.parseInt(data.args[1]))+" count for "+data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_nth_count(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,Integer.parseInt(data.args[1]));
-                            table_headers = new String[]{"Username", "Count"};
-                        }
-                        case "nthcountnouser" -> {
-                            header = header + getOrdinal(Integer.parseInt(data.args[1]))+" count for counting.gg between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            CountValue count = CombinedStats.overall_nth_count_no_user(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,Integer.parseInt(data.args[1]));
-                            output = header + "\n\n"+count;
-                        }
-                        case "updatehoc" -> {
-                            header = header + "Update HoC for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.combinedUpdatesHoc(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Updates"};
-                        }
-                        case "updateswithstring" -> {
-                            header = header + "Update containing "+data.args[1]+" for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.totalUpdatesWithString(data.counting_threads, data.args[1], data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Updates"};
-                        }
-                        case "fastestncounts","slowestncounts","threadfastestncounts","threadslowestncounts" -> {
-                            boolean fast = data.func_name.equals("fastestncounts")||data.func_name.equals("threadfastestncounts");
-                            boolean thread = data.func_name.equals("threadslowestncounts")||data.func_name.equals("threadfastestncounts");
-                            if(!data.flags.username_modified) {
-                                header = header + (fast?"Fastest ":"Slowest ")+data.args[1]+" counts between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            } else {
-                                header = header + (fast ? "Fastest " : "Slowest ") + data.args[1] + " counts for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            }if(thread) {
-                                countData1 = CombinedStats.thread_fastest_n_counts_no_user(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.start_uuid, data.flags.end_uuid,fast);
-                                table_headers = new String[]{"Thread", "Time", "Start Count", "End Count"};
-                            } else if(!data.flags.thread_stats_combined) {
-                                countData1 = CombinedStats.sitewide_fastest_n_counts(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.start_uuid, data.flags.end_uuid,fast);
-                                table_headers = new String[]{"Username", "Time", "Start HoC", "End HoC", "Start Count", "Start Thread", "End Count", "End Thread"};
-                            } else {
-                                countData1 = CombinedStats.overall_fastest_n_counts(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.start_uuid, data.flags.end_uuid,fast);
-                                table_headers = new String[]{"Username", "Time", "Thread", "Start HoC", "End HoC", "Start Count", "End Count"};
-                            }
-                        }
-                        case "sitefastestncounts","siteslowestncounts" -> {
-                            boolean fast = data.func_name.equals("sitefastestncounts");
-                            header = header + (fast?"Fastest ":"Slowest ")+data.args[1]+" counts for counting.gg between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            StatLoader.SitewideFastestNCountsNoUserOutput speed = CombinedStats.sitewide_fastest_n_counts_no_user(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.start_uuid, data.flags.end_uuid,fast);
-                            countData1 = Map.of("cgg",speed);
-                            table_headers = new String[]{"Website", "Time", "Start Count", "Start Thread", "End Count", "Start Thread"};
-                        }
-                        case "nomistakestreak" -> {
-                            header = header + "No mistake streak for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_no_mistake_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start Count", "End Count"};
-                        }
-                        case "threadnomistakestreak" -> {
-                            header = header + "No mistake streak for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.overall_thread_no_mistake_streak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Thread", "Streak", "Start Count", "End Count"};
-                        }
-                        case "threadparts" -> {
-                            header = header + "Unique threads  " + data.flags.username + " has participated in between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.user_thread_parts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Threads   "};
-                        }
-//                        case "dailythreadpartspercentage","monthlythreadpartspercentage","yearlythreadpartspercentage" -> {
-//                            ParticipationDuration mode = switch (data.func_name) {
-//                                case "dailythreadpartspercentage" -> ParticipationDuration.DAY;
-//                                case "monthlythreadpartspercentage" -> ParticipationDuration.MONTH;
-//                                case "yearlythreadpartspercentage" -> ParticipationDuration.YEAR;
-//                                default -> null;
-//                            };
-//                            header = header + mode.toOtherCapitalizedString()+" percentage of threads participated in at position "+ data.flags.position + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-//                            countData1 = CombinedStats.days_with_greatest_percentage_thread_parts(data.counting_threads, data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode);
-//                            table_headers = new String[]{"Date", "%", mode.toCapitalizedString()};
-//                        }
-                        case "fastestbars","slowestbars" -> {
-                            boolean fast = data.func_name.equals("fastestbars");
-                            header = header + (fast?"Fastest ":"Slowest ")+" bars at position "+data.flags.position+" between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData2 = CombinedStats.overall_fastest_bars(data.counting_threads, 3600000, data.flags.start_uuid, data.flags.end_uuid);
-                            if(!fast) reversed = true;
-                            table_headers = new String[]{"Username", "Time", "Count", "Thread"};
-                        }
-                        case "timebetweenhocamounts" -> {
-                            header = header + "Time between " + data.args[1]+" and "+data.args[2]+" for "+data.flags.username+" between "+ data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.timeBetweenTwoHoCAmounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,Integer.parseInt(data.args[1]), Integer.parseInt(data.args[2]));
-                            table_headers = new String[]{"Username", "Time"};
-                        }
-                        case "sumofcounts" -> {
-                            header = header + "Sum of counts for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.getSumOfCounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Sum"};
-                        }
-                        case "sumofreciprocals" -> {
-                            header = header + "Sum of reciprocals for " + data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.getSumOfReciprocals(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Sum"};
-                        }
-                        case "uniquecountsmodn" -> {
-                            header = header + "Unique counts mod " +data.args[1]+" for "+ data.flags.username + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                            countData1 = CombinedStats.unique_counts_mod_n(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.start_uuid, data.flags.end_uuid);
-                            table_headers = new String[]{"Username", "Unique Counts"};
-                        }
-                        case "speedtag" -> {
-                            header = header + "Speed tags between " +data.args[1]+" users at position "+ data.flags.position + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData2 = CombinedStats.overall_speed_tags(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.gets_per_k, data.flags.percentage, Integer.parseInt(data.args[1]));
-                            table_headers = new String[Integer.parseInt(data.args[1])+5];
-                            table_headers[0] = "k";
-                            for(int i=1;i<=Integer.parseInt(data.args[1]);i++) {
-                                table_headers[i] = "User " + i;
-                            }
-                            table_headers[table_headers.length-4] = "Time";
-                            table_headers[table_headers.length-3] = "Thread";
-                            table_headers[table_headers.length-2] = "Counts";
-                            table_headers[table_headers.length-1] = "artbn?";
-                        }
-                        case "fastestsplits" -> {
-                            header = header + "Fastest splits at position "+ data.flags.position + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData2 = CombinedStats.fastestSplits(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.percentage);
-                            table_headers = new String[]{"Time", "Start Count", "End Count", "Thread", "Users"};
-                        }
-                        case "fastestsplitsbyuser" -> {
-                            header = header + "Fastest split for user "+ data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            reversed = true;
-                            countData1 = CombinedStats.fastestSplitsByUser(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.percentage);
-                            table_headers = new String[]{"Username", "Time", "Start Count", "End Count", "Thread", "Other Users"};
-                        }
-                        case "fastestks" -> {
-                            header = header + "Fastest "+data.flags.gets_per_k+"ks at position "+ data.flags.position + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData2 = CombinedStats.fastestKs(data.counting_threads, data.flags.gets_per_k, data.flags.start_k, data.flags.end_k, data.flags.percentage);
-                            table_headers = new String[]{"Time", "Start Count", "End Count", "Thread", "Users"};
-                        }
-                        case "fastestksbyuser" -> {
-                            header = header + "Fastest "+data.flags.gets_per_k+"k for user "+ data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            reversed = true;
-                            countData1 = CombinedStats.fastestKsByUser(data.counting_threads, data.flags.gets_per_k, data.flags.start_k, data.flags.end_k, data.flags.percentage);
-                            table_headers = new String[]{"Username", "Time", "Start Count", "End Count", "Thread", "Other Users"};
-                        }
-                        case "pairpb" -> {
-                            header = header + "Fastest k for users "+ data.args[1]+" and " +data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            if(data.flags.username.compareTo(data.args[1])>0) {
-                                data.flags.username += "|"+data.args[1];
-                            } else {
-                                data.flags.username = data.args[1] +"|"+ data.flags.username;
-                            }
-                            reversed = true;
-                            countData1 = CombinedStats.pair_pbs(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.percentage);
-                            table_headers = new String[]{"User1", "User 2", "Time", "Thread", "k", "Counts"};
-                        }
-                        case "splitstddev" -> {
-                            header = header + "Split standard deviation at position "+ data.flags.position + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData2 = CombinedStats.speedMinSplitStdDev(data.counting_threads, data.flags.start_k, data.flags.end_k, Float.POSITIVE_INFINITY, data.flags.percentage);
-                            table_headers = new String[]{"Std Dev", "Split #", "Time", "Thread", "Users"};
-                        }
-                        case "kstreak" -> {
-                            header = header + (data.flags.is_current?"Current ":"Record ")+data.flags.gets_per_k+"k streak for "+ data.flags.username + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData1 = CombinedStats.overall_k_streak(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.gets_per_k, data.flags.is_current);
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start "+data.flags.gets_per_k+"k", "End "+data.flags.gets_per_k+"k"};
-                        }
-                        case "nonuniquekstreak" -> {
-                            header = header +data.flags.gets_per_k+"k streaks at position "+ data.flags.position + " between ks " + data.flags.start_k + " and " + data.flags.end_k;
-                            countData2 = CombinedStats.overall_non_unique_k_streak(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.gets_per_k);
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start "+data.flags.gets_per_k+"k", "End "+data.flags.gets_per_k+"k"};
-                        }
-                        case "nonuniquedailynthplacestreak","nonuniquemonthlynthplacestreak","nonuniqueyearlynthplacestreak" -> {
-                            ParticipationDuration mode = switch (data.func_name) {
-                                case "nonuniquedailynthplacestreak" -> ParticipationDuration.DAY;
-                                case "nonuniquemonthlynthplacestreak" -> ParticipationDuration.MONTH;
-                                case "nonuniqueyearlynthplacestreak" -> ParticipationDuration.YEAR;
-                                default -> null;
-                            };
-                            header = header + mode.toOtherCapitalizedString()+" "+getOrdinal(Integer.parseInt(data.args[1]))+" place streak at position "+ data.flags.position + " between " + data.flags.getStartDate(mode) + " and " + data.flags.getEndDate(mode);
-                            countData2 = CombinedStats.overall_non_unique_nth_place_streak(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.getStartDate(mode), data.flags.getEndDate(mode), mode);
-                            table_headers = new String[]{"Username", "Streak", "Thread", "Start Date", "End Date"};
-                        }
-                        case "about" -> {
-                            if(data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else {
-                                output = "idk what to put here";
-                            }
-                        }
-                        case "k" -> {
-                            if(data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else {
-                                header = header + data.flags.gets_per_k+"k HoC for "+ data.flags.username + " at k " + data.args[1];
-                                if(Integer.parseInt(data.args[1]) < 0 || Integer.parseInt(data.args[1]) > data.counting_threads.get(0).getCurrentK(data.flags.gets_per_k)) {
-                                    output = "k must be greater than 0 and <= "+data.counting_threads.get(0).getCurrentK(data.flags.gets_per_k);
-                                } else {
-                                    StatLoader.K_HOC val = data.counting_threads.get(0).KHoc(Integer.parseInt(data.args[1]) - 1, data.flags.gets_per_k);
-                                    countData1 = val.hoc();
-                                }
-                                table_headers = new String[]{"Username", "Counts"};
-                            }
-                        }
-                        case "sumofbest","sob" -> {
-                            if(data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else {
-                                header = header + "Sum of Best for "+ data.flags.username + " between ks " + data.flags.start_k+" and "+data.flags.end_k;
-                                Map<String, StatLoader.SumOfBestOutput> sob = data.counting_threads.get(0).sumOfBest(data.flags.start_k, data.flags.end_k, data.flags.percentage);
-                                StatLoader.SumOfBestOutput sob_user;
-                                if((sob_user = sob.get(data.flags.username)) == null) {
-                                    output = "User currently has no sum of best";
-                                } else {
-                                    output = header+"\n\n"+TableConstructor.constructSplitsTable(new StatLoader.SplitsOutput(0, sob_user.splits(),null,null));
-                                }
-                            }
-                        }
-                        case "splits" -> {
-                            if(data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else {
-                                header = header + "Splits for k " + data.args[1];
-                                if(Integer.parseInt(data.args[1]) <= 0 || Integer.parseInt(data.args[1]) > data.counting_threads.get(0).getCurrentK(1)) {
-                                    output = "k must be greater than 0 and <= "+data.counting_threads.get(0).getCurrentK(1);
-                                } else {
-                                    data.flags.start_k = Integer.parseInt(data.args[1])-1;
-                                    List<StatLoader.SplitsOutput> sob = data.counting_threads.get(0).getSplits(data.flags.start_k, data.flags.start_k+1);
-                                    output = header+"\n\n"+TableConstructor.constructSplitsTable(sob.get(0));
-                                }
-                            }
-                        }
-                        case "speed" -> {
-                            if(data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else {
-                                header = header + "The speed for "+data.flags.gets_per_k+"k " + data.args[1]+" was ";
-                                if(Integer.parseInt(data.args[1]) <= 0 || Integer.parseInt(data.args[1]) > data.counting_threads.get(0).getCurrentK(data.flags.gets_per_k)) {
-                                    output = "k must be greater than 0 and <= "+data.counting_threads.get(0).getCurrentK(data.flags.gets_per_k);
-                                } else {
-                                    StatLoader.K_HOC val = data.counting_threads.get(0).KHoc(Integer.parseInt(data.args[1]) - 1, data.flags.gets_per_k);
-                                    output = header + " "+new TimeOutput(val.time());
-                                }
-                            }
-                        }
-                        case "streakswithoutvalidcount" -> {
-                            if(data.counting_threads.size() != 1 || !data.counting_threads.get(0).getName().equals("1inx")) {
-                                output = "This command only works when 1/x is selected";
-                            } else {
-                                header = header + "Streak without a valid counts at position " + data.flags.position + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                                countData2 = ((OneInX) data.counting_threads.get(0)).record_streaks_without_valid_count(data.flags.start_uuid, data.flags.end_uuid);
-                                table_headers = new String[]{"Username", "Streak", "Start Count", "End Count"};
-                            }
-                        }
-                        case "peakcount" -> {
-                            if(data.counting_threads.size() != 1 || !(data.counting_threads.get(0) instanceof NoMistakesThread)) {
-                                output = "This command only works when a no mistakes thread is selected";
-                            } else {
-                                header = header + "Peak count reached at position " + data.flags.position + " between " + data.flags.start_uuid + " and " + data.flags.end_uuid;
-                                countData2 = ((NoMistakesThread) data.counting_threads.get(0)).peak_no_mistakes_counts(data.flags.start_uuid, data.flags.end_uuid);
-                                table_headers = new String[]{"Count Reached", "Count Number"};
-                            }
-                        }
-                        case "update" -> {
-                            if (data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else if(Integer.parseInt(data.args[1]) < 0 || Integer.parseInt(data.args[1]) >= data.counting_threads.get(0).getTotal_updates()) {
-                                output = "Update must be >= 0 and < "+data.counting_threads.get(0).getTotal_updates();
-                            } else {
-                                output = header + "Update " + data.args[1] + ":\n\n";
-                                List<String> urls = new LinkedList<>();
-                                UpdateValue update = data.counting_threads.get(0).getUpdates(Integer.parseInt(data.args[1]));
-                                urls.add(data.counting_threads.get(0).getURLFromUpdateValue(update));
-                                List<String> update_data = new LinkedList<>();
-                                update_data.add(update.getAuthor() + "|" +update.getRawText().replace("\n", " "));
-                                output += TableConstructor.constructRedditTableWithURLsFromList(update_data, new String[]{"Username", "Body"}, urls);
-                            }
-                        }
-                        case "count","number" -> {
-                            if (data.counting_threads.size() != 1) {
-                                output = "This command only works when one thread is selected";
-                            } else if(Integer.parseInt(data.args[1]) <= 0 || Integer.parseInt(data.args[1]) > data.counting_threads.get(0).getTotal_counts()) {
-                                output = "Count must be > 0 and <= "+data.counting_threads.get(0).getTotal_counts();
-                            } else {
-                                output = header + "Count " + data.args[1] + ":\n\n";
-                                List<String> urls = new LinkedList<>();
-                                CountValue update = data.counting_threads.get(0).getCountsTimeSort(Integer.parseInt(data.args[1])-1);
-                                urls.add(data.counting_threads.get(0).getURLFromCountValue(update));
-                                List<String> update_data = new LinkedList<>();
-                                update_data.add(update.getAuthor() + "|" +update.getRawText().replace("\n", " "));
-                                output += TableConstructor.constructRedditTableWithURLsFromList(update_data, new String[]{"Username", "Body"}, urls);
-                            }
-                        }
-                        case "updatedb" -> {
-                            if(Arrays.binarySearch(admins, data.flags.username) < 0) output = "User does not have privileges to run this command";
-                            else {
-                                for (Statable thread : data.counting_threads) {
-                                    thread.updateDatabase();
-                                }
-                                output = header + "\n\nAll above threads successfully updated";
-                            }
-                        }
-                        default -> {
-                            output = "That command does not exist";
-                        }
+                        case "hoc" -> count_data = CombinedStats.hoc(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "countswithstring" -> count_data = CombinedStats.countsWithString(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.args[1], data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "strikehoc" -> count_data = CombinedStats.strikeHoc(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "participation", "hop" -> count_data = CombinedStats.participation(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "firstcounts" -> count_data = CombinedStats.firstCounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "palindromes", "dromes" -> count_data = CombinedStats.palindromes(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "repdigitsstat" -> count_data = CombinedStats.repdigits(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "nrep" -> count_data = CombinedStats.nRep(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "basen" -> count_data = CombinedStats.baseN(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "sumofcounts" -> count_data = CombinedStats.sumOfCounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "sumofreciprocals" -> count_data = CombinedStats.sumOfReciprocals(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "nthcount" -> count_data = CombinedStats.nthCount(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "threadparts" -> count_data = CombinedStats.threadParts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.min_counts, data.flags.use_counts);
+                        case "attemptspercount" -> count_data = CombinedStats.attemptsPerCount(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.mode, data.flags.include_current, data.flags.exclude_100, data.flags.unique, data.flags.use_counters);
+                        case "fastestselfreplies" -> count_data = CombinedStats.fastestSelfReplies(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "timespenthavinglastcount" -> count_data = CombinedStats.timeSpentHavingLastCount(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "timebetweenhocamounts" -> count_data = CombinedStats.timeBetweenHoCAmounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), Integer.parseInt(data.args[2]), data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "day","dayhoc" -> {count_duration_type = 5;count_data = CombinedStats.dayHoc(data.counting_threads, new Stats.TimeUnit(data.args[1], data.flags.time_period), data.flags.time_period, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "month","monthhoc" -> {count_duration_type = 5;count_data = CombinedStats.dayHoc(data.counting_threads, new Stats.TimeUnit(data.args[1], ParticipationDuration.MONTH), ParticipationDuration.MONTH, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "year","yearhoc" -> {count_duration_type = 5;count_data = CombinedStats.dayHoc(data.counting_threads, new Stats.TimeUnit(data.args[1], ParticipationDuration.YEAR), ParticipationDuration.YEAR, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "dayparts" -> {count_duration_type = 1;count_data = CombinedStats.dayParts(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);}
+                        case "daystreak" -> {count_duration_type = 1;count_data = CombinedStats.dayStreak(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "dayrecord" -> {count_duration_type = 1;count_data = CombinedStats.dayRecord(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "daymedals" -> {count_duration_type = 1;count_data = CombinedStats.dayMedals(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);}
+                        case "nthplacedaystreak" -> {count_duration_type = 1;count_data = CombinedStats.nthPlaceDayStreak(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "countsperday" -> {count_duration_type = 1;count_data = CombinedStats.countsPerDay(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "peakcountsperday" -> {count_duration_type = 1;count_data = CombinedStats.peakCountsPerDay(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "dailypercentageofcounts" -> {count_duration_type = 1;count_data = CombinedStats.nthPlaceDailyPercentageOfCounts(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, 0, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "nthplacedailypercentageofcounts" -> {count_duration_type = 1;count_data = CombinedStats.nthPlaceDailyPercentageOfCounts(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, Integer.parseInt(data.args[1]), data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "photofinishes" -> {count_duration_type = 1;count_data = CombinedStats.photoFinishes(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);}
+                        case "percentagethreadpartsbyday" -> {count_duration_type = 1;count_data = CombinedStats.percentageThreadPartsByDay(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts);}
+                        case "gets" -> count_data = CombinedStats.gets(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.offset, data.flags.k_size, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "assists" -> count_data = CombinedStats.gets(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, 1, data.flags.k_size, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "k","khoc" -> {count_duration_type = 6;count_data = CombinedStats.kHoc(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.k_size, 0, true, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);}
+                        case "split","splithoc" -> {count_duration_type = 7;count_data = CombinedStats.kHoc(data.counting_threads, Integer.parseInt(data.args[1]), data.flags.k_size, Integer.parseInt(data.args[2]), false, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);}
+                        case "kparts" -> {count_duration_type = 2;count_data = CombinedStats.kParts(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined, data.flags.add_thread_stats);}
+                        case "kstreak" -> {count_duration_type = 2;count_data = CombinedStats.kStreak(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);}
+                        case "fastestks" -> {count_duration_type = 2;count_data = CombinedStats.fastestKs(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, data.flags.percentage, data.flags.first, data.flags.unique, data.flags.use_counters);}
+                        case "perfectks","p500" -> {count_duration_type = 2;count_data = CombinedStats.perfectKs(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, data.flags.unique, data.flags.add_thread_stats);}
+                        case "kmedals" -> {count_duration_type = 2;count_data = CombinedStats.kMedals(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined, data.flags.add_thread_stats);}
+                        case "kundernmsstreak" -> {count_duration_type = 2;count_data = CombinedStats.kUnderNMsStreak(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, Integer.parseInt(data.args[1]), data.flags.percentage, data.flags.unique, data.flags.use_counters);}
+                        case "pairpbs" -> {count_duration_type = 2;count_data = CombinedStats.pairPBs(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.use_ks, data.flags.percentage, data.flags.first, data.flags.unique);}
+                        case "kminsplitstddev" -> {count_duration_type = 2;count_data = CombinedStats.kMinSplitStdDev(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.percentage, data.flags.first, data.flags.unique, data.flags.use_counters);}
+                        case "sumofbest","sob" -> {count_duration_type = 2;count_data = CombinedStats.sumOfBest(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.percentage, null, data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);}
+                        case "usersumofbest","usersob" -> {count_duration_type = 2;count_data = CombinedStats.sumOfBest(data.counting_threads, data.flags.start_k, data.flags.end_k, data.flags.k_size, data.flags.percentage, data.flags.username, data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.use_counters || data.flags.thread_counts_combined);}
+                        case "hourparts" -> count_data = CombinedStats.hourParts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "hourrecord","recordhour" -> count_data = CombinedStats.hourRecord(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "hourrecordoffset","recordhouroffset" -> count_data = CombinedStats.hourRecordOffset(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Math.min(data.flags.duration, 604800), data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "hourrecordnomistakes","recordhournomistakes" -> count_data = CombinedStats.hourRecordNoMistakes(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "fastestbars" -> count_data = CombinedStats.fastestBars(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "fastestncounts" -> count_data = CombinedStats.fastestNCounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "dominantncounts" -> count_data = CombinedStats.dominantNCounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "feweststrikesinncounts" -> count_data = CombinedStats.fewestStrikesInNCounts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.first, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "uniquetimepartsinday" -> count_data = CombinedStats.uniqueTimeParts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_modified ? data.flags.duration : 3600000, false, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "uniquetimepartsinweek" -> count_data = CombinedStats.uniqueTimeParts(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.duration_modified ? data.flags.duration : 3600000, true, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "uniquecountsmodn" -> count_data = CombinedStats.uniqueCountsModN(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "countspermistake" -> count_data = CombinedStats.countsPerMistake(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.min_counts, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "nomistakestreak" -> count_data = CombinedStats.noMistakeStreak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.unique, data.flags.use_counters, data.flags.thread_counts_combined);
+                        case "perfectstreak" -> count_data = CombinedStats.perfectStreak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.counts_between_replies, data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "rotationstreak" -> count_data = CombinedStats.rotationStreak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.flags.counts_between_replies, data.flags.allow_duplicate_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "nmsreplies" -> count_data = CombinedStats.nMsReplies(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "countsundernmsstreak" -> count_data = CombinedStats.countsUnderNMsStreak(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, Integer.parseInt(data.args[1]), data.flags.unique, data.flags.use_counters, data.flags.use_counts, data.flags.thread_counts_combined);
+                        case "oddratio" -> count_data = CombinedStats.oddEvenRatio(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, true, data.flags.min_counts, data.flags.unique, data.flags.thread_counts_combined);
+                        case "evenratio" -> count_data = CombinedStats.oddEvenRatio(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, false, data.flags.min_counts, data.flags.unique, data.flags.thread_counts_combined);
+                        case "trifecta" -> count_data = CombinedStats.trifecta(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, !data.flags.first, data.flags.use_counts);
+                        case "trifectadayhoc" -> {count_duration_type = 5;count_data = CombinedStats.trifectaDayHoc(data.counting_threads, new Stats.TimeUnit(data.args[1], data.flags.time_period), data.flags.time_period, !data.flags.first, data.flags.use_counts);}
+                        case "trifectadayparts" -> {count_duration_type = 1;count_data = CombinedStats.trifectaDayParts(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, !data.flags.first, data.flags.use_counts);}
+                        case "trifectadaystreak" -> {count_duration_type = 1;count_data = CombinedStats.trifectaDayStreak(data.counting_threads, data.flags.start_date, data.flags.end_date, data.flags.time_period, data.flags.mode, !data.flags.first, data.flags.unique, data.flags.use_counts);}
+                        case "countingpairs" -> count_data = CombinedStats.countingPairs(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, false, 0, data.flags.allow_duplicate_counters, data.flags.unique, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "hourcountingpairs" -> count_data = CombinedStats.countingPairs(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, true, data.flags.duration, data.flags.allow_duplicate_counters, data.flags.unique, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "favoritecounter","favouritecounter" -> count_data = CombinedStats.favoriteCounters(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,  data.flags.allow_duplicate_counters, data.flags.unique, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "usercountingpairs","countingpairsspecificuser" -> count_data = CombinedStats.countingPairsSpecificUser(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid,  data.args[1], data.flags.allow_duplicate_counters, data.flags.unique, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "percentofcountswithuser" -> count_data = CombinedStats.percentageOfCountsWithUser(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.args[1], data.flags.min_counts, data.flags.unique, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        case "usersnotcountedwith" -> count_data = CombinedStats.usersNotCountedWith(data.counting_threads, data.flags.start_uuid, data.flags.end_uuid, data.args[1], data.flags.unique, data.flags.use_counts, data.flags.thread_counts_combined, data.flags.add_thread_stats);
+                        default -> output = "The command does not exist for a nonzero amount of threads";
                     }
-                } catch(NumberFormatException | IndexOutOfBoundsException | DateTimeParseException e) {
-                    output = "Illegal arguments to "+data.func_name;
-                } catch(UnsupportedOperationException e) {
-                    output = "Method unsupported for the current thread";
-                } catch(IllegalArgumentException e) {
-                    output = e.getMessage();
+                } catch(IndexOutOfBoundsException | IllegalArgumentException | DateTimeParseException e) {
+                    output = "Illegal Arguments to "+data.func_name;
                 }
-            }
-            if(countData1!=null) {
-                String table = TableConstructor.constructRedditTable(countData1, table_headers, reversed, data.flags.username, data.flags.context);
-                if (table == null) {
-                    output = "No counts were found for the given command";
-                } else {
-                    output = header + "\n\n" + table;
+                if(count_data!=null) {
+                    String username = data.flags.username;
+                    if(!data.flags.use_counters && all_threads.containsKey(username)) username = all_threads.get(username).thread.title;
+                    output = "*Threads: " + generateThreadString(data.counting_threads)+"*\n\n"+count_data.stat_name+" "+generateStatRangeString(data.counting_threads, data.args, data.flags, data.func_name, username, count_duration_type)+"\n\n";
+                    if(data.flags.position>0) output+=count_data.toCompressedTable(data.flags.context, data.flags.position);
+                    else output += count_data.toCompressedTable(data.flags.context, data.flags.username);
                 }
-            } else if(countData2!=null) {
-                String table = TableConstructor.constructRedditTable(countData2, table_headers, reversed, data.flags.position, data.flags.context);
-                if (table == null) {
-                    output = "No counts were found for the given command";
-                } else {
-                    output = header + "\n\n" + table;
-                }
+                if(output.length() > 4096) output = "Output too large. Please try again with a smaller context window.";
             }
             CGGAuthenticator.postToAPI(output);
-            //Bot.RedditAuthenticator.postToAPI("/api/live/"+ Bot.RedditAuthenticator.live_thread+"/update", "body="+output, 0);
         }
     }
 
+    private static String generateStatRangeString(List<CountingThread> threads, String[] args, Flags flags, String func_name, String username, int count_duration_type) {
+        UUID min_uuid = new UUID(getFirstCountTimestamp(threads, flags.use_counts), 0);
+        UUID max_uuid = new UUID(getLastCountTimestamp(threads, flags.use_counts), 0);
+        String output = "";
+        if(flags.position>0) output += "At Position "+flags.position+" ";
+        else if(func_name.equals("rotationstreak")) output += "";
+        else if(flags.use_counters) output += "For User "+username+" ";
+        else if(!flags.thread_counts_combined) output += "For Thread "+username+" ";
+        else output += "In CGG ";
+        if(count_duration_type < 5 && flags.start_uuid.getTime() <= min_uuid.getTime() && flags.end_uuid.getTime() >= max_uuid.getTime()) return output;
+        return output + switch(count_duration_type) {
+            //UUID
+            case 0 -> {
+                if(flags.start_uuid.getTime() <= min_uuid.getTime()) yield "Up to UUID "+flags.end_uuid;
+                else if(flags.end_uuid.getTime() >= max_uuid.getTime()) yield "Starting with UUID "+flags.start_uuid;
+                else yield "Between UUIDs "+flags.start_uuid+" and "+flags.end_uuid;
+            }
+            //Date
+            case 1 -> {
+                if(flags.start_uuid.getTime() <= min_uuid.getTime()) yield "Up to "+flags.end_date;
+                else if(flags.end_uuid.getTime() >= max_uuid.getTime()) yield "Starting From "+flags.start_date;
+                else yield "Between "+flags.start_date+" and "+flags.end_date;
+            }
+            //K
+            case 2 -> {
+                if(flags.start_uuid.getTime() <= min_uuid.getTime()) yield "Up to "+flags.k_size+"K "+flags.end_k;
+                else if(flags.end_uuid.getTime() >= max_uuid.getTime()) yield "Starting From "+flags.k_size+"K "+flags.start_k;
+                else yield "Between "+flags.k_size+"Ks "+flags.start_k+" and "+flags.end_k;
+            }
+            //Count
+            case 3 -> {
+                if(flags.start_uuid.getTime() <= min_uuid.getTime()) yield "Up to Count "+flags.end_count;
+                else if(flags.end_uuid.getTime() >= max_uuid.getTime()) yield "Starting From Count "+flags.start_count;
+                else yield "Between Counts "+flags.start_count+" and "+flags.end_count;
+            }
+            //Update
+            case 4 -> {
+                if(flags.start_uuid.getTime() <= min_uuid.getTime()) yield "Up to Update "+flags.end_update;
+                else if(flags.end_uuid.getTime() >= min_uuid.getTime()) yield "Starting From Update "+flags.start_update;
+                else yield "Between Updates "+flags.start_update+" and "+flags.end_update;
+            }
+            //Day/Month/Year (Single Day)
+            case 5 -> "For "+new Stats.TimeUnit(args[1], flags.time_period);
+            //K (Single K)
+            case 6 -> "For "+flags.k_size+"K "+Integer.parseInt(args[1]);
+            //Split (Single Split)
+            case 7 -> "For "+flags.k_size+"K "+Integer.parseInt(args[1])+", Split "+Integer.parseInt(args[2]);
+            default -> throw new IllegalArgumentException("Illegal Count Duration Type");
+        };
+    }
+
+    private static String generateThreadString(List<CountingThread> threads) {
+        if(threads.size()==AllThreads.all_threads.size()) return "All Threads";
+        List<CountingThread> traditional = new ArrayList<>();
+        List<CountingThread> double_counting = new ArrayList<>();
+        List<CountingThread> no_mistakes = new ArrayList<>();
+        List<CountingThread> miscellaneous = new ArrayList<>();
+        for (CountingThread thread : threads) {
+            switch(thread.thread.category) {
+                case "Traditional" -> traditional.add(thread);
+                case "Double Counting" -> double_counting.add(thread);
+                case "No Mistakes" -> no_mistakes.add(thread);
+                case "Miscellaneous" -> miscellaneous.add(thread);
+                default -> System.out.println("Thread Category Not Found: "+thread.thread.category);
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        if(traditional.size()==AllThreads.traditional.size()) sb.append("Traditional, ");
+        if(double_counting.size()==AllThreads.double_counting.size()) sb.append("Double Counting Threads, ");
+        if(no_mistakes.size()==AllThreads.no_mistakes.size()) sb.append("No Mistakes Threads, ");
+        if(miscellaneous.size()==AllThreads.miscellaneous.size()) sb.append("Miscellaneous, ");
+        if(traditional.size()!=AllThreads.traditional.size()) {
+            for(CountingThread thread: traditional) sb.append(thread.thread.title).append(", ");
+        }
+        if(double_counting.size()!=AllThreads.double_counting.size()) {
+            for(CountingThread thread: double_counting) sb.append(thread.thread.title).append(", ");
+        }
+        if(no_mistakes.size()!=AllThreads.no_mistakes.size()) {
+            for(CountingThread thread: no_mistakes) sb.append(thread.thread.title).append(", ");
+        }
+        if(miscellaneous.size()!=AllThreads.miscellaneous.size()) {
+            for(CountingThread thread: miscellaneous) sb.append(thread.thread.title).append(", ");
+        }
+        return sb.substring(0, sb.length()-2);
+    }
 }

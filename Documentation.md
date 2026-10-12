@@ -1,39 +1,46 @@
-Arguments names prepended by a `-` are optional, and in order to use an optional parameter, it must be prepended by that flag (given below). Mandatory parameters do not use a flag and must be provided before any optional parameters. Also, all underscores are optional, but are presented here to aid in readability. Commands are case insensitive, but parameters may not be. In addition, all 'day' stats have month and year variants, with the exception of `unique_hour_parts_in_day` which can be viewed by changing the function name to the corresponding time duration, and changing any parameters as necessary.
+Arguments names prepended by a `-` are optional, and in order to use an optional parameter, it must be prepended by that flag (given below). Mandatory parameters do not use a flag and must be provided before any optional parameters. Also, all underscores are optional, but are presented here to aid in readability. Commands are case insensitive, but parameters may not be. 
 
 List of flags: 
 
 Flag|Explanation
 -|-
-`-thread`,`-t`|The focused thread for the stat (defaults to main)
-`-username`,`-u`|The focused user for the stat (defaults to submitter)
-`-position`,`-p`|The focused position for the stat (defaults to 1)
-`-context`,`-c`|The visible range around the focused user or position in the display of the stat (defaults to 2)
-`-start_uuid`,'`su`|The start UUID for which to generate the stat (defaults to 00000000-0000-4000-a000-000000000000)
-`-end_uuid`,`-eu`|The end UUID for which to generate the stat (defaults to 99999999-9999-4999-a999-999999999999)
-`-start_date`,`-sd`|The start date for which to generate the stat (defaults to 2023-2-22)
-`-end_date`,`-ed`|The end date for which to generate the stat (defaults to current day + 1)
-`-start_k`,`-sk`|The start k for which to generate the stat (defaults to 0)
-`-end_k`,`-ek`|The end k for which to generate the stat (defaults to 2147483647)
-`-start_count`,`-sc`|The start count for which to generate the stat (defaults to 0)
-`-end_count`,`-ec`|The end count for which to generate the stat (defaults to 2147483647)
-`-ksize`,`-ks`|Sets how many gets there are per k (defaults to 1)
-`-current`|Request only current stats. Takes no arguments and defaults to false.
-`-duration`,`-d`|Sets duration (in seconds) for length of "hour". Argument must divide 3600 (defaults to 3600)
-`-combined`|Individually combine results from all threads as opposed to treating the count as a single thread. Takes no arguments and defaults to false.
-`-percentage`,`-%`|Set the percentage of counts required for a user to have "participated" in a speedrun, unless otherwise specified. Must be between 0 and 1 (defaults to 0.98)
-`-counts_between_replies`,`-cbr`|Sets the amount of counts are needed between replies for "perfect" streaks (defaults to 1)
-`-mode`|See stat-specific explanation for usage instruction (defaults to 0)
-`-min_parts`,`-mp`|See stat-specific explanation for usage instruction (defaults to 0)
-`-max_ms`|See stat-specific explanation for usage instruction (defaults to 1000)
-`-cap`|See stat-specific explanation for usage instruction (defaults to 0)
-`-offset`,`-o`|See stat-specific explanation for usage instruction (defaults to 0)
+`-username`, `-u`|The focused user for the stat (defaults to submitter if `-t` is not present, defaults to `main` if `-t` is present)
+`-position`, `-p`|The focused position for the stat (defaults to `1`)
+`-context`, `-c`|The visible range around the focused user or position in the display of the stat (defaults to `2`)
+`-start_uuid`, `su`|The start UUID for which to generate the stat (defaults to `00000000-0000-4000-a000-000000000000`)
+`-end_uuid`, `-eu`|The end UUID for which to generate the stat (defaults to `99999999-9999-4999-a999-999999999999`)
+`-start_date`, `-sd`|The start date for which to generate the stat (defaults to `2023-2-22`, `2023-2`, or `2023` depending on `tp`)
+`-end_date`, `-ed`|The end date for which to generate the stat (defaults to day counts were last downloaded + 1)
+`-start_k`, `-sk`|The start k for which to generate the stat (defaults to `0`)
+`-end_k`, `-ek`|The end k for which to generate the stat (defaults to `2147483647`)
+`-start_count`, `-sc`|The start count for which to generate the stat (defaults to `0`)
+`-end_count`, `-ec`|The end count for which to generate the stat (defaults to `2147483647`)
+`-start_update`, `-sup`|The start count for which to generate the stat (defaults to `0`)
+`-end_update`, `-eup`|The end count for which to generate the stat (defaults to `2147483647`)
+`-time_period`, `-tp`|The duration used for day stats. Accepts `day`,`d`,`month`,`m`,`year`,`y` (defaults to `day`). 
+`-ksize`, `-ks`|Sets how many gets there are per k (defaults to `1`)
+`-min_counts`, `-mc`|Set the minimum number of counts one must have for a stat entry to count (defaults to `1`)
+`-offset`, `-o`|Sets the count offset for gets (ex: offset of `1` generates assists), (defaults to `0`)
+`-percentage`, `-%`|Set the percentage of counts required for a user to have "participated" in a speedrun, unless otherwise specified. Must be between `0` and `1` (defaults to `0.98`)
+`-mode`|See stat-specific explanation for usage instruction (defaults to `0`)
+`-duration`, `-d`|Sets duration (in seconds unless otherwise specified) for length of "hour". Argument must divide `3600` (defaults to `3600`)
+`-counts_between_replies`, `-cbr`|Sets the amount of counts are needed between replies for "perfect" streaks (defaults to `1`)
+`-unique`, `-un`|Allow each user to appear only once in the given stat. Takes no arguments.
+`-updates`, `-up`|Use updates instead of counts to generate stat. Takes no arguments.
+`-threads`, `-t`|Use threads as the object of focus instead of users. Takes no arguments.
+`-combined`, `-com`|Treat all selected threads as if they were from a single thread (sorted temporally). Takes no arguments.
+`-add_thread_stats`, `-add`|Compute the stat in each thread separately, and then sum the results. Takes no arguments.
+`-allow_duplicate_counters`, `-dup`|Allow duplicate counters to exist in rotation streaks and counting pairs stats. Takes no arguments.
+`-splits`, `-s`|Use splits instead of ks for computing the stat. Takes no arguments.
+`-week`, `-w`|Allow each user to appear only once in the given stat. Takes no arguments.
+`-slowest`, `-most`, `-worst`, `-antifecta`, `-maximum`, `last_counts`|See stat-specific explanation for usage instructions. Takes no arguments.
+`-current`, `-exclude`|See stat-specific explanation for usage instructions. Takes no arguments.
 
-Note: Format for days is of the form <yyyy-mm-dd>, months <yyyy-mm>, and years <yyyy>.
+
+Format for days is of the form <yyyy-mm-dd>, months <yyyy-mm>, and years <yyyy>.
+For stats that accept `-su` and `-eu`, `-sd` and `-ed` can be used instead. If `-combined` is active or if there is only 1 thread, `-sc`, `-ec`, `-sup`, and `-eup` can also be used. And if there is only 1 thread, `-sk` and `-ek` can be used. 
 
 Additionally, mandatory parameters (if they exist) are always at the front and are not prepended by `-`
-
-
-
 
 
 The following commands do not have a thread attached to them; they are of the format `!{:} <command>`.
@@ -41,122 +48,100 @@ The following commands do not have a thread attached to them; they are of the fo
 Command|Arguments|Explanation
 -|-|-
 `help`||Links to this post
-`thread_list`|<-t>|Provides a list of all threads. Using the argument displays aliases for that thread.
+`thread_list`|<-u>|Provides a list of all threads. Using the argument displays aliases for that thread.
+`quote`|<-u>|Display a quote for \<u> generated by a poorly-implemented Markov chain.
+`10milliondollars`|<-u>|\<u> gets 10 million dollars. 
 `update_all`||Downloads new updates for all threads. Admin exclusive.
-`exacta` or `trifecta`|<-u> <-c> <-sd> <-ed>|Shows total trifectas/exactas for specified user
-`exacta_day_parts` or `trifecta_day_parts`|<-u> <-c> <-sd> <-ed>|Shows total trifecta/exacta day parts for specified user
-`exacta_day_streak` or `trifecta_day_streak`|<-mode> <-u> <-c> <-sd> <-ed> <-current>|Shows record trifecta/exacta day streak for specified user. mode=0 -> trifecta streaks, mode=1 -> chalupa exacta streaks, mode=2 -> poonxacta streaks, mode=3 ->  trejexacta streaks, mode<0,mode>=4 -> combined exacta streaks.
-`non_unique_exacta_day_streak` or `non_unique_trifecta_day_streak`|<-mode> <-p> <-c> <-sd> <-ed> <-current>|Shows all trifecta/exacta day streaks around a specified position. See above for modes.
 
 
 The following are commands that can be used after providing a list of threads. To send a list, use space-separated thread names. Example: `!{:} main slow bars <command>`. In addition, there are also some special parameters that can be used here:  
 `all_threads` will use all counting threads  
-`favorites` or `favourites` will use all side threads in the "favorites" category (before customization)
-`traditional` will use all side threads in the "no_mistakes" category (before customization)  
-`double` or `double_counting` will use all side threads in the "double_counting" category (before customization)
-`no_mistakes_threads` will use all side threads in the "no_mistakes" category (before customization)  
-`miscellaneous` or `other` will use all side threads in the "miscellaneous" or "other" categories (before customization)  
+`traditional` will use all side threads in the "no_mistakes" category  
+`double` or `double_counting_threads` will use all side threads in the "double_counting" category  
+`no_mistakes_threads` will use all side threads in the "no_mistakes" category  
+`miscellaneous` or `other` will use all side threads in the "miscellaneous" or "other" categories  
 In addition, you can prepend any thread with `-` to exclude it.
 
-Example: `!{:} all_sides -tow -tow_avoid0 -tow_double <command>` will use all side threads except for tow threads.
+Example: `!{:} all_threads -tow -tow_avoid0 -tow_double <command>` will use all threads except for tow threads.
 
+Almost every stat in this section can optionally take the parameters `-u`, `-c`, and `-p`.  
+Exception: `rotation_streak` does not take `-u`.
 
-Command|Arguments|Explanation
--|-|-
-`hoc`|<-u> <-c> <-su> <-eu> <-cap>|Shows hoc for specified user, where the hoc per thread is capped by <cap>. If cap<=0, there is no cap.
-`kparts`|<-u> <-c> <-sk> <-ek> <-ks>|Shows k parts for specified user.
-`day_parts`|<-u> <-c> <-sd> <-ed> <-combined>|Shows day parts for specified user
-`counts_per_day`|<-u> <-c> <-sd> <-ed>|Shows <username>'s counts per day
-`peak_counts_per_day`|<-u> <-c> <-sd> <-ed> <-mp>|Shows <username>'s record counts per day. Users with fewer than <min_parts> day parts are excluded.
-`hour_parts`|<-u> <-c> <-su> <-eu> <-d>|Shows hour parts for specified user. 
-`hop` or `participation`|<-u> <-c> <-su> <-eu>|Shows hop score for specified user.
-`gets`|<-u> <-c> <-sk> <-ek> <-o>|Shows hall of gets. The offset is subtracted from every count (default 0; ex: offset of 1 generates hall of assists)
-`assists`|<-u> <-c> <-sk> <-ek> <-o>|Shows hall of assists. This is equivalent to gets, except default offset is 1.
-`day`|<start_date> <-u> <-c>|Shows day HoC for specified day
-`first_count`|<-u> <-su>|Shows the first count for the specified user.
-`last_count`|<-u> <-eu>|Shows the last count for the specified user.
-`day_medals` or `cotd`|<-u> <-c> <-sd> <-ed> <-combined>|Shows day medals for particular user. 
-`k_medals`|<-u> <-c> <-sk> <-ek> <-ks>|Shows k medals for particular user. 
-`day_streak`|<-u> <-c> <-sd> <-ed> <-current> <-mp>|Shows record day streak for specified user. <-mp> is the minimum daily counts required for the streak.
-`non_unique_day_streak`|<-p> <-c> <-sd> <-ed> <-mp>|Shows all day streaks around a specified position. <-mp> is the minimum daily counts required for the streak.
-`palindromes` or `dromes`|<-u> <-c> <-su> <-eu>|Shows total palindromes for specified user between numbers. Does not work with all threads.
-`repdigits`|<-u> <-c> <-su> <-eu>|Shows total repdigits for specified user between numbers. Does not work with all threads.
-`n_rep`|<n> <-u> <-c> <-su> <-eu>|Shows total n_reps for specified user between numbers (ex: If n is 3, this will return trips). Does not work with all threads.
-`base_n`|<n> <-u> <-c> <-su> <-eu>|Shows total counts in base n for specified user between numbers. Does not work with all threads.
-`days_over_n_counts`|<n> <-u> <-c> <-sd> <-ed> <-combined>|Shows total days over n counts for specified user. For example, if <n> equals 5000, this will return total HoEs.
-`thread_days_over_n_counts`|<n> <-t> <-c> <-sd> <-ed>|Shows total days over n counts for specified threads.
-`day_record`|<-u> <-c> <-sd> <-ed> <-combined>|Shows record counts in a day for specified user.
-`top_counts_per_day`|<-p> <-c> <-sd> <-ed> <-combined>|Shows all day hoc amounts around a specified position
-`thread_day_record`|<-t> <-c> <-sd> <-ed> <-combined>|Shows record counts in a day for specified thread.
-`record_hour`|<-u> <-c> <-su> <-eu> <-d> <-combined>|Shows record hour for specified user.
-`record_hour_offset`|<-u> <-c> <-su> <-eu> <-d> <-combined>|Shows record hour for specified user, unaligned to hour boundaries.
-`thread_record_hour`|<-p> <-c> <-su> <-eu> <-d>|Shows record hours for individual threads around a specified position.
-`dominant_n_counts`|<n> <-u> <-c> <-su> <-eu>|Shows a user's most dominant period of n counts.
-`perfect_streak`|<-u> <-c> <-su> <-eu> <-cbr>|Shows longest perfect streak a user has achieved.
-`non_unique_perfect_streak`|<-p> <-c> <-su> <-eu> <-cbr>|Shows longest perfect streaks around a specified position.
-`rotation_streak` or `double_perfect_streak`|<-p> <-c> <-su> <-eu> <-cbr>|Shows all perfect streaks around a specified position where every person involved maintains a perfect streak.
-`fastest_self_replies`|<-p> <-c> <-su> <-eu>|Shows fastest self replies around a specified position. Capped at 1000ms replies.
-`median_self_reply`|<-u> <-c> <-su> <-eu> <-mp>|Shows median self reply time for a user. Users with fewer than <-mp> counts are excluded.
-`sub_n_ms_self_reply_streak`|<n> <-u> <-c> <-su> <-eu>|Shows how many self replies at or below n ms a specified user has had consecutively.
-`counting_pairs`|<username1> <-u> <-c> <-su> <-eu>|Shows the amount of counts <username1> and <-u> have done together.
-`hour_counting_pairs`|<username1> <-u> <-c> <-su> <-eu> <-d>|Shows the record amount of counts <username1> and <-u> have done together within an hour.
-`user_counting_pairs`|<username1> <-u> <-c> <-su> <-eu>|Shows the counting pairs of <username1> focused on <-u>.
-`percent_of_counts_with_user`|<username1> <-u> <-c> <-su> <-eu> <-mp>|Shows the percentage of <username1>'s counts that have been done with <-u>. Users who have done fewer than <-mp> counts will be excluded.
-`favorite_counter` or `favourite_counter`|<-u> <-c> <-su> <-eu>|Shows who a specified user has the most counts with.
-`time_spent_having_last_count`|<-u> <-c> <-su> <-eu> <-combined>|Shows how long a specified user has had the last count.
-`n_ms_replies`|<n> <-u> <-c> <-su> <-eu>|Shows how many n ms replies a specified user has had.
-`odd_ratio`|<-u> <-c> <-su> <-eu> <-mp>|Shows the % of counts <username> made that were odd. Excludes anyone with fewer counts than <-mp>
-`even_ratio`|<-u> <-c> <-su> <-eu> <-mp>|Shows the % of counts <username> made that were even. Excludes anyone with fewer counts than <-mp> 
-`unique_hour_parts_in_day`|<-u> <-c> <-su> <-eu> <-d>|Shows how many unique hours a user has participated in (out of 24). For memory reasons, users with fewer counts than 1/2 of the maximum are excluded.
-`unique_hour_parts_in_week`|<-u> <-c> <-su> <-eu> <-d>|Shows how many unique hours a user has participated in (out of 168). For memory reasons, users with fewer counts than 1/2 of the maximum are excluded.
-`daily_percent_of_counts`|<-p> <-c> <-sd> <-ed>|Shows what percentage of daily counts users have achieved.
-`nth_place_daily_percent_of_counts`|<n> <-p> <-c> <-sd> <-ed>|Shows what percentage of daily counts users have achieved at a certain day hoc position.
-`daily_photo_finish`|<-p> <-c> <-sd> <-ed> <-%> <-mp>|Shows days where a position in the top 3 was determined by less than <-%>. Only users with more than <-mp> counts are considered.
-`largest_cliques`|<-u> <-c> <-su> <-eu> <-mp>|Shows the largest clique <username> is part of, where all users have at least <-mp> counts with each other.
-`highest_user_not_counted_with`|<-u> <-c> <-su> <-eu>|Shows the users with the most counts that <-u> has not counted with.
-`perfect_ks` or `p500`|<-u> <-c> <-sk> <-ek> <-ks>|Shows total perfect ks <-u> has performed.
-`nth_count`|<n> <-u> <-c> <-su> <-eu>|Shows a user's nth count after <-su>.
-`nth_count_no_user`|<n> <-su> <-eu>|Shows the nth count after <-su>.
-`update_hoc`|<-u> <-c> <-su> <-eu>|Shows total updates for specified user.
-`updates_with_string`|<query> <-u> <-c> <-su> <-eu>|Shows total updates a specified user has sent containing <query>.
-`fastest_n_counts`|<n> <-u> <-c> <-su> <-eu> <-combined>|Shows the fastest a user has had an n count increase in the hoc.
-`slowest_n_counts`|<n> <-u> <-c> <-su> <-eu> <-combined>|Shows the slowest a user has had an n count increase in the hoc.
-`thread_fastest_n_counts`|<n> <-t> <-c> <-su> <-eu>|Shows the fastest a thread has received n counts.
-`thread_slowest_n_counts`|<n> <-t> <-c> <-su> <-eu>|Shows the slowest a thread has received n counts.
-`site_fastest_n_counts`|<n> <-su> <-eu>|Shows the fastest the site has received n counts.
-`site_slowest_n_counts`|<n> <-su> <-eu>|Shows the slowest the site has received n counts.
-`no_mistake_streak`|<-u> <-c> <-su> <-eu>|Shows record no mistake streak for specified user.
-`thread_parts`|<-u> <-c> <-su> <-eu>|Shows unique threads specified user has participated in.
-`fastest_bars`|<-p> <-c> <-su> <-eu>|Shows the fastest bars around a specified position
-`slowest_bars`|<-p> <-c> <-su> <-eu>|Shows the slowest bars around a specified position
-`time_between_hoc_amounts`|<hoc_start> <hoc_end> <-u> <-c> <-su> <-eu>|Shows the time it took a specified user to go between <hoc_start> and <hoc_end> counts.
-`sum_of_counts`|<-u> <-c> <-su> <-eu>|Shows the sum of numbers a user has counted.
-`sum_of_reciprocals`|<-u> <-c> <-su> <-eu>|Shows the sum of the reciprocals of the numbers a user has counted.
-`unique_counts_mod_n`|<n> <-u> <-c> <-su> <-eu>|Shows how many unique counts a user has mod n. For memory reasons, users with fewer counts than n/2 counts are excluded.
-`speed_tag`|<users_tagging> <-p> <-c> <-sk> <-ek> <-%>|Displays all speed tags around a given position, with <users_tagging> being how many people are involved in the tag. <-%> is the percentage of counts each user needs in their section (either k_size/<users_tagging> counts, or if artbn tag, either k_size/2 or k_size/(1+<users_tagging>)).
-`fastest_splits`|<-p> <-c> <-sk> <-ek> <-%>|Displays the fastest splits around a specified position. Will not work for every thread.
-`fastest_splits_by_user`|<-u> <-c> <-sk> <-ek> <-%>|Displays the fastest split for a specified user. Will not work for every thread.
-`fastest_ks`|<-p> <-c> <-sk> <-ek> <-ks> <-%>|Displays the fastest ks around a specified position.
-`fastest_ks_by_user`|<-u> <-c> <-sk> <-ek> <-ks> <-%>|Displays the fastest k for a specified user.
-`pair_pb`|<username1> <-u> <-c> <-sk> <-ek> <-%>|Displays the fastest k <username1> and <-u> have run together where each user has at least <-%> of the counts.
-`split_std_dev`|<-p> <-c> <-sk> <-ek> <-%>|Displays the minimum split standard deviation in a k around a specified position. 
-`k_streak`|<-u> <-c> <-sk> <-ek> <-ks> <-current>|Shows record k part streak for specified user. 
-`non_unique_k_streak`|<-p> <-c> <-sk> <-ek> <-ks>|Shows all k part streaks around a specified position. 
-`non_unique_daily_nth_place_streak`|<n> <-p> <-c> <-sd> <-ed> <-ks>|Shows all nth-place day hoc streaks around a specified position. 
-`update_db`||Downloads counts for specified threads. Admin exclusive.
-
-
-
-The following are commands that will only work with a single thread
+Note for trifecta stats: If there are exactly 3 threads, then exactas will be displayed as well, and order of thread matters. Chalupa Exactas match the 2nd and 3rd threads, Poonxactas match the 1st and 3rd threads, trejexactas match the 1st and 2nd threads, so the canonical ordering for trifectas is "main slow bars".
 
 Command|Arguments|Explanation
 -|-|-
-`about` or ``||Provides various metadata for a thread
-`k`|<k> <-u> <-c> <-ks>|Shows <size>k HoC for specific k (ex: with <-ks>=100, this displays 100k hoc
-`sum_of_best` or `sob`|<-u> <-sk> <-ek> <-%>|Displays a user's sum of best splits. Will not work for every thread.
-`splits`|<k>|Displays the splits for a specific k. Will not work for every thread.
-`speed`|<k> <-ks>|Displays the speed of the specified k. <size> denotes how many gets there are per k.
-`streaks_without_valid_count`|<-p> <-c> <-su> <-eu>|Displays the number of failed attempts for a count. Only considers counts that could have been valid. Must be used with thread 1/x.
-`peak_count`|<-p> <-c> <-su> <-eu>|Displays the greatest count reached in the thread. Must be used with a "no mistakes" thread.
-`update`|<update_id>|Gets the specified update for the thread.
-`number` or `count`|<number>|Gets all updates with the specified number for the thread.
+`hoc`|<-su> <-eu> <-un> <-t> <-up> <-com>|Displays how many counts each user has.
+`counts_with_string`|<search> <-su> <-eu> <-un> <-t> <-up> <-com>|Displays how many counts each user has that have a comment containing the string <search>.
+`strike_hoc`|<-su> <-eu> <-un> <-t> <-com> |Displays how many stricken counts each user has.
+`participation`, `hop`|<-su> <-eu> <-un> <-t> <-com> <-add>|Displays the participation score for each user. The score is 2\*counts + 500\*(gets+assists) + 250\*(k parts + day parts).
+`first_counts`|<-su> <-eu> <-last_counts> <-un> <-t> <-up> <-com>|Displays the first count for each user. If <last\_counts>, display the last count instead.
+`palindromes`, `dromes`|<-su> <-eu> <-un> <-t> <-com> |Displays how many palindromic counts each user has.
+`repdigits_stat`|<-su> <-eu> <-un> <-t> <-com> |Displays how many repdigit counts each user has (uses LC definition of repdigit).
+`n_rep`|<n> <-su> <-eu> <-un> <-t> <-com>|Displays how many n rep counts each user has. (ex: if n=3, displays # of counts that end with the same digit repeated 3 times)
+`base_n`|<n> <-su> <-eu> <-un> <-t> <-com>|Displays how many base n counts each user has.
+`sum_of_counts`|<-su> <-eu> <-un> <-t> <-com> |Displays the sum of counts each user has.
+`sum_of_reciprocals`|<-su> <-eu> <-un> <-t> <-com> |Displays the sum of reciprocals of counts each user has. 
+`nth_count`|<n> <-su> <-eu> <-un> <-t> <-up> <-com>|Displays the nth count of eachuser.
+`thread_parts`|<-su> <-eu> <-mc> <-up>|Displays how many threads each user has counted in.
+`attempts_per_count`|<-su> <-eu> <-mode> <-current> <-exclude> <-un> <-t>|Displays the attempts needed and the % chance of obtaining a count with that number of attempts for each count. If <mode>=`0`, sort by # of attempts (ascending). If <mode>=`1`, sort by # of attempts (descending). If <mode>=`2`, sort by % chance (descending). If <mode>=`3`, sort by % chance (ascending). If <current>, this includes attempts for counts that have not yet occurred, and if <exclude>, exclude all counts with a 100% chance. This only produces nontrivial results for threads "1/x", "Incremental Odds", and "Random Hour".
+`fastest_self_replies`|<-su> <-eu> <-slowest> <-un> <-t> <-up> <-com>|Displays the fastest self replies each user has. If <slowest>, display slowest self replies instead.
+`time_spent_having_last_count`|<-su> <-eu> <-un> <-t> <-up> <-com> <-add>|Displays how long each user has had the last count in a thread.
+`time_between_hoc_amounts`|<n1> <n2> <-su> <-eu> <-un> <-t> <-up> <-com>|Displays how many long it took each user to go between <n1> and <n2> counts.
+`day`, `dayhoc`|<date> <-tp> <-un> <-t> <-up> <-com>|Displays how many counts each user has on a specific day.
+`month`, `monthhoc`|<date> <-un> <-t> <-up> <-com>|Calls `day` with <tp>=`month`
+`year`, `yearhoc`|<date> <-un> <-t> <-up> <-com>|Calls `day` with <tp>=`year`
+`day_parts`|<-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up> <-com> <-add>|Displays how many days each user has counted during.
+`day_streak`|<-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up> <-com> |Displays how many consecutive days each user has counted during.
+`day_record`|<-sd> <-ed> <-tp> <-un> <-t> <-up> <-com>|Displays the record number of counts each user has achieved in a day.
+`day_medals`|<-sd> <-ed> <-tp> <-un> <-t> <-up> <-com> <-add>|Displays the number of times each user has achieved top 3 in counts in a day.
+`nth_place_day_streak`|<n> <-sd> <-ed> <-tp> <-un> <-t> <-up> <-com>|Displays how many consecutive days each user has achieved nth place in counts.
+`counts_per_day`|<-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up> <-com> |Displays the average number of counts each user counts per day. Only counts days with at least 1 count. Users must have at least <mc> total day parts.
+`peak_counts_per_day`|<-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up> <-com> |Displays the record average number of counts each user counts per day. Only counts days with at least 1 count. Users must have at least <mc> total day parts.
+`daily_percentage_of_counts`|<-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up> <-com> |Displays the % of counts in a day done by each user.
+`nth_daily_percentage_of_counts`|<n> <-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up> <-com>|Displays the % of counts in a day while achieving nth place in daily counts done by each user.
+ `photo_finishes`|<-sd> <-ed> <-tp> <-un> <-t> <-up> <-com>|Displays the days with the least % difference in counts between a top 3 position and a lower position.
+`percentage_thread_parts_by_day`|<-sd> <-ed> <-tp> <-mc> <-un> <-t> <-up>|Displays the % of threads each user has participated in for each day. Threads that don't exist as of each date are not considered.
+`gets`|<-su> <-eu> <-o> <-ks> <-un> <-t> <-com>|Displays how many gets each user has.
+`assists`|<-su> <-eu> <-o> <-ks> <-un> <-t> <-com>|Calls `gets` with <o>=1.
+`gets`|<-su> <-eu> <-o> <-ks> <-un> <-t> <-com>|Displays how many gets each user has.
+`k`, `k_hoc`|<k> <-ks> <-un> <-t> <-com>|Displays how counts each user has in a specific k.
+`split`, `split_hoc`|<k> <split> <-ks> <-un> <-t> <-com>|Displays how counts each user has in a specific split.
+`k_parts`|<-sk> <-ek> <-ks> <-s> <-mc> <-un> <-t> <-com> <-add>|Displays how many ks each user has counted in.
+`k_streak`|<-sk> <-ek> <-ks> <-s> <-mc> <-un> <-t> <-com>|Displays how many consecutive ks each user has counted in.
+`fastest_ks`|<-sk> <-ek> <-ks> <-s> <-%> <-slowest> <-un> <-t>|Displays the fastest ks for each user. If <slowest>, display the slowest ks instead.
+`perfect_ks`, `p500`|<-sk> <-ek> <-ks> <-s> <-un> <-add>|Displays how many ks each user has achieved the maximum number of counts in.
+`k_medals`|<-sk> <-ek> <-ks> <-s> <-un> <-t> <-com> <-add> |Displays the number of times each user has achieved top 3 in counts in a k.
+`k_under_n_ms_streak`|<n> <-sk> <-ek> <-ks> <-s> <-%> <-un> <-t>|Displays how many consecutive ks under n ms each user has achieved.
+`pair_pbs`|<-sk> <-ek> <-ks> <-s> <-%> <-slowest> <-un>|Displays the fastest ks between two counters. If <slowest>, display the slowest ks.
+`k_min_split_std_dev`|<-sk> <-ek> <-ks> <-%> <-maximum> <-un> <-t>|Displays the ks with the least standard deviation in split times for each user. If <maximum>, display the ks with the greatest standard deviation.
+`sum_of_best`,`sob`|<-sk> <-ek> <-ks> <-%> <-worst> <-un> <-t> <-com>|Displays the sum of best splits for each user. If <worst>, display the sum of worst splits instead.
+`user_sum_of_best`, `user_sob`|<-sk> <-ek> <-ks> <-%> <-worst> <-un> <-t> <-com>|Displays the best splits for the specific user <u>. If <worst>, display the worst splits instead. 
+`hour_parts`|<-su> <-eu> <-d> <-mc> <-un> <-t> <-up> <-com> <-add>|Displays how many hours each user has counted in.
+`hour_record`, `record_hour`|<-su> <-eu> <-d> <-un> <-t> <-up> <-com>|Displays the record number of counts each user has counted in <d> seconds. This is locked to hour boundaries (i.e. if <d>=`3600`, then each interval is measured from xx:00 -> (xx+1):00)
+`hour_record_offset`, `record_hour_offset`|<-su> <-eu> <-d> <-un> <-t> <-up> <-com>|Displays the record number of counts each user has counted in <d> seconds. <d> does not have to divide 3600, but is capped at 604,800 for memory reasons.
+`hour_record_no_mistakes`, `record_hour_no_mistakes`|<-su> <-eu> <-d> <-un> <-t> <-com>|Displays the record number of counts each user has counted in <d> seconds without any stricken counts. This is locked to hour boundaries (i.e. if <d>=`3600`, then each interval is measured from xx:00 -> (xx+1):00)
+`fastest_bars`|<-su> <-eu> <-slowest> <-un> <-t> <-up> <-com>|Displays the fastest bars for each user. If <slowest>, displays the slowest bars instead.
+`fastest_n_counts`|<n> <-su> <-eu> <-slowest> <-un> <-t> <-up> <-com>|Displays the fastest n counts for each user. If <slowest>, displays the slowest n counts instead.
+`dominant_n_counts`|<n> <-su> <-eu> <-un> <-t> <-up> <-com>|Displays the most counts each user has achieved in an n count period.
+`fewest_strikes_in_n_counts`|<-su> <-eu> <-most> <-un> <-t> <-com>|Displays the fewest number of stricken counts each user has achieved over n valid counts. If <most>, displays the greatest number of stricken counts instead.
+`unique_time_parts_in_day`|<-su> <-eu> <-d> <-un> <-t> <-up> <-com>|Displays the number of unique <d> millisecond periods each user has counted in in a day. For this stat, <d> uses milliseconds and has a default value of 3,600,000. Unlike the CGG home page, this is in Eastern Time, not UTC. For memory reasons, users with fewer counts than 1/2 the maximum number of counts are excluded.
+`unique_time_parts_in_week`|<-su> <-eu> <-d> <-un> <-t> <-up> <-com>|Displays the number of unique <d> millisecond periods each user has counted in in a week. For this stat, <d> uses milliseconds and has a default value of 3,600,000. For memory reasons, users with fewer counts than 1/2 the maximum number of counts are excluded.
+`unique_counts_mod_n`|<n> <-su> <-eu> <-d> <-un> <-t> <-com> |Displays the number of unique counts mod n for each user. For memory reasons, users with fewer counts than n/2 counts are excluded.
+`no_mistakes_streak`|<-su> <-eu> <-un> <-t> <-com> |Displays how many valid counts each user has counted without any counts being stricken.
+`perfect_streak`|<-su> <-eu> <-cbr> <-un> <-t> <-up> <-com>|Displays how many consecutive counts each user has counted in intervals of <cbr>.
+`rotation_streak`|<-su> <-eu> <-cbr> <-dup> <-un> <-t> <-up> <-com>|Displays how many consecutive counts each set of <cbr> users has counted in intervals of <cbr>. If <dup>, duplicate counters can be in this set.
+`n_ms_replies`|<n> <-su> <-eu> <-un> <-t> <-up> <-com> <-add>|Displays how many n ms replies each user has made to previous counts (not necessarily their own count).
+`counts_under_n_ms_streak`|<n> <-su> <-eu> <-un> <-t> <-up> <-com>|Displays how many sub n ms replies each user has made to their previous counts.
+`odd_ratio`|<-su> <-eu> <-mc> <-un> <-com>|Displays the % of counts each user makes that are odd. This only applies to the base 10 count number, not the raw count.
+`even_ratio`|<-su> <-eu> <-mc> <-un> <-com>|Displays the % of counts each user makes that are even. This only applies to the base 10 count number, not the raw count.
+`trifecta`|<-su> <-eu> <-antifecta> <-up>|Displays the amount of trifectas each user has. If <antifecta>, displays antifectas instead. 
+`trifecta_day_hoc`|<date> <-tp> <-antifecta> <-up>|Displays the amount of trifectas each user has on <date>. If <antifecta>, displays antifectas instead.
+`trifecta_day_parts`|<-sd> <-ed> <-tp> <-antifecta> <-up>|Displays the amount of days each user has obtained a trifecta on. If <antifecta>, displays antifectas day parts instead.
+`trifecta_day_streak`|<-sd> <-ed> <-tp> <-mode> <-antifecta> <-un> <-up>|Displays the amount of consecutive days each user has obtained a trifecta on. If <mode>=`0`, trifectas are used for the streak. If <mode>=`1`, Chalupa Exactas are used. If <mode>=`2`, Poonxactas are used, and if <mode>=`3`, trejexactas are used. If <antifecta>, displays antifectas day streak instead.
+`counting_pairs`|<-su> <-eu> <-dup> <-un> <-up> <-com> <-add>|Displays the amount of counts each user has with each other user.
+`hour_counting_pairs`|<-su> <-eu> <-d> <-dup> <-un> <-up> <-com> <-add>|Displays the amount of counts each user has with each other user for each <d> second period.
+`favorite_counter`, `favourite_counter`|<-su> <-eu> <-dup> <-un> <-up> <-com> <-add>|Displays the user that each user has the greatest amount of counts with.
+`user_counting_pairs`, `counting_pairs_specific_user`|<user> <-su> <-eu> <-dup> <-un> <-up> <-com> <-add>|Displays the amount each user has with <user>.
+`percent_of_counts_with_user`|<user> <-su> <-eu> <-mc> <-un> <-up> <-com> <-add>|Displays the % of <user>'s counts that have been counted with each user. (<add> only impacts the underlying call to `counting_pairs`)
+`users_not_counted_with`|<user> <-su> <-eu> <-mc> <-un> <-up> <-com> <-add>|Displays the users with the most counts that <user> has not counted with. (<add> only impacts the underlying call to `counting_pairs`)

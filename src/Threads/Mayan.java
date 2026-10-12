@@ -1,17 +1,12 @@
 package Threads;
 
-import java.util.List;
+import Stats.CountingThread;
+import Stats.ThreadData;
 
-public class Mayan extends Statable {
-    public Mayan() {
-        super("mayan", List.of("mayan"),"America/Montreal");
+public class Mayan extends CountingThread {
+    public Mayan(ThreadData t) {
+        super(t);
     }
-
-    @Override
-    public List<Integer> getGetValues() {
-        return this.constructSimpleGetListWithOffset(400, 0);
-    }
-
     public String getCount(int num) {
         if(num <= 0) throw new IllegalArgumentException();
         StringBuilder count = new StringBuilder();
@@ -34,16 +29,5 @@ public class Mayan extends Statable {
             num/=exp;
         }
         return count.substring(1);
-    }
-    public String getNextGet() {
-        return "The next get is `"+ getCount((this.getLast_number()/400+1)*400)+"`";
-    }
-    public String[] link() {
-        return new String[]{"https://counting.gg/thread/mayan"};
-    }
-
-    @Override
-    public List<List<Integer>> getSplitValues() {
-        return this.constructSimpleSplitsListWithInitialOffset(20, 400, 0);
     }
 }

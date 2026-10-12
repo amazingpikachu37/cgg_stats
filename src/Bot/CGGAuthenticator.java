@@ -27,7 +27,7 @@ public class CGGAuthenticator {
             BufferedReader br = new BufferedReader(fr)) {
             token = br.readLine();
         } catch (IOException ignored) {
-            throw new RuntimeException("No token found");
+            throw new RuntimeException("No token found. Please create file \"/CGGStats/token.txt\" and insert your token.");
         }
         return token;
     }
@@ -79,12 +79,16 @@ public class CGGAuthenticator {
     public static void postToAPI(String body) {
         try {
             JSONObject json = new JSONObject();
+            JSONObject macroMetadata = new JSONObject();
             json.put("thread_name", "test");
             json.put("text", body);
             json.put("post_hash", Long.toString((long) (Math.random() * 100000000000000000L), 36));
             json.put("refScroll", new String[0]);
             json.put("postScroll",new String[0]);
             json.put("latency", false);
+            macroMetadata.put("macroPresetId",3);
+            macroMetadata.put("macroPresetVersionId",1);
+            json.put("macroMetadata", macroMetadata);
             socket.emit("post", json);
         } catch (JSONException e) {
             throw new RuntimeException();

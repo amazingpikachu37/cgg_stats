@@ -1,25 +1,14 @@
 package Threads;
 
+import Stats.CountingThread;
+import Stats.ThreadData;
+
 import java.text.DecimalFormat;
-import java.util.List;
 
-public class Words extends Statable {
-    public Words() {
-        super("words", List.of("words"), "America/Montreal");
+public class Words extends CountingThread {
+    public Words(ThreadData t) {
+        super(t);
     }
-    private final String[] tensNames = {
-            "",
-            " ten",
-            " twenty",
-            " thirty",
-            " forty",
-            " fifty",
-            " sixty",
-            " seventy",
-            " eighty",
-            " ninety"
-    };
-
     private final String[] numNames = {
             "",
             " one",
@@ -42,6 +31,18 @@ public class Words extends Statable {
             " eighteen",
             " nineteen"
     };
+    private final String[] tensNames = {
+            "",
+            " ten",
+            " twenty",
+            " thirty",
+            " forty",
+            " fifty",
+            " sixty",
+            " seventy",
+            " eighty",
+            " ninety"
+    };
     private String convertLessThanOneThousand(int number) {
         String soFar;
         if (number % 100 < 20){
@@ -57,7 +58,7 @@ public class Words extends Statable {
         if (number == 0) return soFar;
         return numNames[number] + " hundred" + soFar;
     }
-    private String convert(long number) {
+    private String convertWord(long number) {
         if (number == 0) { return "zero"; }
         String snumber;
         String mask = "000000000000";
@@ -87,24 +88,8 @@ public class Words extends Statable {
         return result.replaceAll("^\\s+", "").replaceAll("\\b\\s{2,}\\b", " ").trim();
     }
 
-    @Override
-    public List<Integer> getGetValues() {
-        return this.constructSimpleGetListWithOffset(1000,0);
-    }
-
     public String getCount(int num) {
         if(num <= 0) throw new IllegalArgumentException();
-        return this.convert(num);
-    }
-    public String getNextGet() {
-        return "The next get is `"+ getCount((this.getLast_number()/1000+1)*1000)+"`";
-    }
-    public String[] link() {
-        return new String[]{"https://counting.gg/thread/words"};
-    }
-
-    @Override
-    public List<List<Integer>> getSplitValues() {
-        return this.constructSimpleSplitsListWithInitialOffset(100, 1000, 0);
+        return this.convertWord(num);
     }
 }
